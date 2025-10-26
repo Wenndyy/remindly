@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal, init_db
 from app.models import User
 from app.auth_utils import hash_password, verify_password, create_access_token, create_refresh_token, get_current_user, verify_token
-from .schemas import UserCreate, UserLogin, TokenResponse, ResetPasswordSchema
+from .schemas import UserCreate, UserLogin, TokenResponse, ResetPasswordSchema, RegisterResponse, UserResponse
 import time, secrets
 
 init_db()
@@ -22,18 +22,37 @@ def get_db():
 def health_check():
     return {"status": "Backend is running"}
 
-# Register
-@app.post("/register")
+@app.post("/register", response_model=RegisterResponse)
 def register(user: UserCreate, db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.username == user.username).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="Username already exists")
-    hashed_pw = hash_password(user.password)
-    new_user = User(username=user.username, email=user.email, hashed_password=hashed_pw)
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    return {"msg": "User created successfully"}
+    try:
+        if db.query(User).filter(User.username == user.username).first():
+            raise HTTPException(status_code=400, detail="Username already exists")
+        
+        if db.query(User).filter(User.email == user.email).first():
+            raise HTTPException(status_code=400, detail="Email already exists")
+        
+        hashed_pw = hash_password(user.password)
+        full_name = f"{user.first_name} {user.last_name}"
+        
+        new_user = User(
+            username=user.username,
+            email=user.email,
+            hashed_password=hashed_pw,
+            full_name=full_name
+        )
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        
+        return RegisterResponse(
+            msg="User created successfully",
+            user=UserResponse.from_orm(new_user)
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc() 
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 # Login
 @app.post("/login", response_model=TokenResponse)
@@ -116,10 +135,11 @@ def reset_password(data: ResetPasswordSchema, db: Session = Depends(get_db)):
     db.commit()
     return {"msg": f"Password for {db_user.username} has been reset successfully"}
 
-# Protected route
-@app.get("/protected")
-def protected_route(current_user: User = Depends(get_current_user)):
-    return {"msg": f"Hello {current_user.username}, you have access!", "role": current_user.role}
+# User route
+@app.get("/user-dashboard")
+def user_dashboard(current_user: User = Depends(lambda: get_current_user(required_roles=["user"]))):
+    return {"msg": f"Welcome to user dashboard, {current_user.username}"}
+
 
 # Admin route
 @app.get("/admin-dashboard")

@@ -1,4 +1,4 @@
-# 🧠 Remindly — Authentication & Task Management System
+# 🧠 Remindly 
 
 ---
 

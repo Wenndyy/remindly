@@ -2,14 +2,13 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional
 
 class UserCreate(BaseModel):
-    username: str
     email: EmailStr
     password: str
     first_name: str
     last_name: str
 
 class UserLogin(BaseModel):
-    username: str
+    email: EmailStr
     password: str
 
 class TokenResponse(BaseModel):
@@ -22,7 +21,6 @@ class ResetPasswordSchema(BaseModel):
 
 class UserResponse(BaseModel):
     id: int
-    username: str
     email: str
     role: str
     is_active: int
@@ -35,3 +33,4 @@ class UserResponse(BaseModel):
 class RegisterResponse(BaseModel):
     msg: str
     user: UserResponse
+

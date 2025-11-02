@@ -43,13 +43,13 @@ def get_current_user(required_roles: list = None, Authorization: str = Header(..
     if not Authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid token format")
     token = Authorization.split(" ")[1]
-    username = verify_token(token)
-    if not username:
+    email = verify_token(token)
+    if not email:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     
     db: Session = SessionLocal()
     try:
-        user = db.query(User).filter(User.username == username).first()
+        user = db.query(User).filter(User.email == email).first()
         if not user or user.is_active != 1:
             raise HTTPException(status_code=403, detail="User inactive or not found")
         if required_roles and user.role not in required_roles:

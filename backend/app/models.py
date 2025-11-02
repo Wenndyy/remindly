@@ -1,14 +1,21 @@
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.sqlite import JSON
+import os
 import time
 
 Base = declarative_base()
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./remindly.db")
+if DATABASE_URL.startswith("sqlite"):
+    ArrayType = JSON
+else:
+    ArrayType = ARRAY
 
 class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     refresh_token = Column(String, nullable=True)
@@ -31,3 +38,4 @@ class User(Base):
     profile_picture = Column(String, nullable=True)
     full_name = Column(String, nullable=True)
     phone_number = Column(String, nullable=True)
+

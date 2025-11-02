@@ -5,6 +5,7 @@ from app.models import User
 from app.auth_utils import hash_password, verify_password, create_access_token, create_refresh_token, get_current_user, verify_token
 from .schemas import UserCreate, UserLogin, TokenResponse, ResetPasswordSchema, RegisterResponse, UserResponse
 import time, secrets
+from typing import List, Optional
 
 init_db()
 app = FastAPI(title="Full Auth API with Roles and Reset Token")
@@ -25,8 +26,8 @@ def health_check():
 @app.post("/register", response_model=RegisterResponse)
 def register(user: UserCreate, db: Session = Depends(get_db)):
     try:
-        if db.query(User).filter(User.username == user.username).first():
-            raise HTTPException(status_code=400, detail="Username already exists")
+        if db.query(User).filter(User.email == user.email).first():
+            raise HTTPException(status_code=400, detail="email already exists")
         
         if db.query(User).filter(User.email == user.email).first():
             raise HTTPException(status_code=400, detail="Email already exists")
@@ -35,7 +36,6 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
         full_name = f"{user.first_name} {user.last_name}"
         
         new_user = User(
-            username=user.username,
             email=user.email,
             hashed_password=hashed_pw,
             full_name=full_name
@@ -57,7 +57,7 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
 # Login
 @app.post("/login", response_model=TokenResponse)
 def login(user: UserLogin, db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.username == user.username).first()
+    db_user = db.query(User).filter(User.email == user.email).first()
     if not db_user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if db_user.is_active != 1:
@@ -71,8 +71,8 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
     db_user.failed_login_attempts = 0
     db_user.last_login = int(time.time())
     
-    access_token = create_access_token({"sub": db_user.username})
-    refresh_token = create_refresh_token({"sub": db_user.username})
+    access_token = create_access_token({"sub": db_user.email})
+    refresh_token = create_refresh_token({"sub": db_user.email})
     db_user.refresh_token = refresh_token
     db.commit()
     
@@ -81,28 +81,28 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
 # Logout
 @app.post("/logout")
 def logout(refresh_token: str = Body(...), db: Session = Depends(get_db)):
-    username = verify_token(refresh_token)
-    if not username:
+    email = verify_token(refresh_token)
+    if not email:
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
-    db_user = db.query(User).filter(User.username == username).first()
+    db_user = db.query(User).filter(User.email == email).first()
     if not db_user or db_user.refresh_token != refresh_token:
         raise HTTPException(status_code=401, detail="Refresh token not valid")
     db_user.refresh_token = None
     db.commit()
-    return {"msg": f"User {username} has been logged out successfully"}
+    return {"msg": f"User {email} has been logged out successfully"}
 
 # Refresh token
 @app.post("/refresh", response_model=TokenResponse)
 def refresh_token(refresh_token: str = Body(...), db: Session = Depends(get_db)):
-    username = verify_token(refresh_token)
-    if not username:
+    email = verify_token(refresh_token)
+    if not email:
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
-    db_user = db.query(User).filter(User.username == username).first()
+    db_user = db.query(User).filter(User.email == email).first()
     if not db_user or db_user.refresh_token != refresh_token:
         raise HTTPException(status_code=401, detail="Refresh token not valid")
     
-    new_access_token = create_access_token({"sub": username})
-    new_refresh_token = create_refresh_token({"sub": username})
+    new_access_token = create_access_token({"sub": email})
+    new_refresh_token = create_refresh_token({"sub": email})
     db_user.refresh_token = new_refresh_token
     db.commit()
     return {"access_token": new_access_token, "refresh_token": new_refresh_token}
@@ -133,15 +133,15 @@ def reset_password(data: ResetPasswordSchema, db: Session = Depends(get_db)):
     db_user.reset_token = None
     db_user.reset_token_expiry = None
     db.commit()
-    return {"msg": f"Password for {db_user.username} has been reset successfully"}
+    return {"msg": f"Password for {db_user.email} has been reset successfully"}
 
 # User route
 @app.get("/user-dashboard")
 def user_dashboard(current_user: User = Depends(lambda: get_current_user(required_roles=["user"]))):
-    return {"msg": f"Welcome to user dashboard, {current_user.username}"}
+    return {"msg": f"Welcome to user dashboard, {current_user.email}"}
 
 
 # Admin route
 @app.get("/admin-dashboard")
 def admin_dashboard(current_user: User = Depends(lambda: get_current_user(required_roles=["admin"]))):
-    return {"msg": f"Welcome to admin dashboard, {current_user.username}"}
+    return {"msg": f"Welcome to admin dashboard, {current_user.email}"}

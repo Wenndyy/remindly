@@ -6,9 +6,20 @@ from app.auth_utils import hash_password, verify_password, create_access_token, 
 from .schemas import UserCreate, UserLogin, TokenResponse, ResetPasswordSchema, RegisterResponse, UserResponse
 import time, secrets
 from typing import List, Optional
+from fastapi.middleware.cors import CORSMiddleware
 
 init_db()
 app = FastAPI(title="Full Auth API with Roles and Reset Token")
+
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # ganti sesuai alamat frontend
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Dependency DB
 def get_db():

@@ -7,9 +7,9 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    const token = localStorage.getItem("token"); // atau "access_token"
-    if (!token) {
-      router.push("/login"); // redirect kalau belum login
+    const accessToken = localStorage.getItem("access_token") || localStorage.getItem("token");
+    if (!accessToken) {
+      router.replace("/login"); 
     }
   }, [router]);
 

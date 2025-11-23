@@ -61,7 +61,7 @@ export default function SlideSidebar({ children }: { children: React.ReactNode }
 
   return (
     <div className="flex min-h-screen bg-gray-100">
-      <aside className={`flex flex-col transition-all duration-300 ${open ? "w-72" : "w-20"} bg-linear-to-b from-[#8b1b1f] to-[#5a0e12] text-white rounded-r-3xl overflow-hidden shadow-lg z-20`}>
+      <aside className={`flex flex-col transition-all duration-300 ${open ? "w-72" : "w-20"} bg-linear-to-b from-[#B6252A] to-[#501012] text-white rounded-r-3xl overflow-hidden shadow-lg z-20`}>
         <div className="flex items-center justify-between px-6 py-6">
           <div className="flex items-center gap-3">
             <Link href="/dashboard" className="flex items-center gap-3">

@@ -22,6 +22,54 @@ type WeeklyCalendarProps = {
   endHour?: number;  
 };
 
+function BadgeCalendar({ month, day }: { month: string; day: number | string }) {
+  return (
+    <div
+      className="rounded-xl shadow-sm"
+      style={{
+        width: 52,
+        height: 52,
+        overflow: "hidden",
+        background: "#fff",
+        border: "4px solid #e5e7eb", 
+        boxSizing: "border-box",
+      }}
+      aria-label={`${month} ${day}`}
+    >
+   
+      <div
+        style={{
+          height: 16,              
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "#B6252A",
+        }}
+      >
+        <span style={{ fontSize: 10, fontWeight: 600, color: "#ffffff", lineHeight: 1 }}>
+          {month}
+        </span>
+      </div>
+
+    
+      <div
+        style={{
+          height: 52 - 4 * 2 - 16,  
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "#ffffff",
+        }}
+      >
+        <span style={{ color: "#B6252A", fontWeight: 700, fontSize: 18, lineHeight: 1 }}>
+          {String(day).padStart(2, "0")}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+
 export default function WeeklyCalendar({
   selectedDate,
   onDateSelect,
@@ -120,12 +168,10 @@ export default function WeeklyCalendar({
     return Math.max(24, minutesToPx(dur));
   };
 
-  const topOffsetForHour = (hour: number) => (hour - startHour) * hourRowHeight;
 
   
   const goPrev = () => setWeekOffset(v => v - 1);
   const goNext = () => setWeekOffset(v => v + 1);
-  const goToday = () => setWeekOffset(0);
 
 
   useEffect(() => {
@@ -155,10 +201,8 @@ export default function WeeklyCalendar({
       <div className="flex items-center justify-between px-5 py-4 border-b">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-md border border-red-300 bg-white flex flex-col items-center justify-center text-red-700 shadow-sm">
-              <div className="text-xs font-semibold -mb-1">{badgeDate.month}</div>
-              <div className="text-sm font-bold">{badgeDate.dayNum}</div>
-            </div>
+            <BadgeCalendar month={badgeDate.month} day={badgeDate.dayNum} />
+
           </div>
 
           <div>

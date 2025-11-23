@@ -23,7 +23,7 @@ export default function RegisterPage() {
       }
     }, [router]);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
     if (form.password !== form.confirm_password) {
@@ -39,7 +39,7 @@ export default function RegisterPage() {
         password: form.password,
       });
       router.replace("/login");
-    } catch (err) {
+    } catch (err: any) {
       setError(err?.response?.data?.detail || "Registration failed");
     }
   };

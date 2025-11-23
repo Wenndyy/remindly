@@ -1,6 +1,6 @@
 "use client";
 import axiosClient from "../api/axiosClient";
-import { useState, useEffect } from "react";
+import { useState, useEffect, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -18,7 +18,7 @@ export default function LoginPage() {
     }
   }, [router]);
 
-  const handleLogin = async (e) => {
+  const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
     try {
       const response = await axiosClient.post("/login", { email, password });
@@ -31,8 +31,9 @@ export default function LoginPage() {
       router.replace("/dashboard");
 
       console.log("Login success:", response.data);
-    } catch (err) {
-      setError(err?.response?.data?.detail || "Login failed");
+    } catch (err: any) {
+      const message = err?.response?.data?.detail || err?.message || "Login failed";
+      setError(message);
       console.error("Login failed:", err?.response?.data || err?.message);
     }
   };

@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import MonthCalendarPreview from "../components/MonthCalendarPreview";
 import WeeklyCalendar from "../components/WeeklyCalendar";
+import { useRouter } from "next/navigation";
 
 
 function TaskList() {
@@ -37,8 +38,28 @@ function TaskList() {
 }
 
 
-export default function DashboardContent({ user = null }) {
-  const [selectedDate, setSelectedDate] = useState(null);
+export default function DashboardContent({ user = null }: { user?: { photoURL?: string; name?: string } | null }) {
+  const router = useRouter();
+  const [checkedAuth, setCheckedAuth] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  useEffect(() => {
+  
+    const accessToken = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+
+    if (!accessToken) {
+      router.replace("/login");
+      return;
+    }
+
+    setCheckedAuth(true);
+  }, [router]);
+
+ 
+  if (!checkedAuth) {
+    return <div className="p-6">Memeriksa autentikasi...</div>;
+  }
+
+  
   const photo = user?.photoURL ?? null;
   const name = user?.name ?? "User";
   const events = [
@@ -61,7 +82,7 @@ export default function DashboardContent({ user = null }) {
 
         <div className="col-span-8 space-y-4">
     
-          <div className="flex items-center justify-between bg-linear-to-r from-[#8b1b1f] to-[#5a0e12] text-white px-6 py-4 rounded-xl shadow">
+          <div className="flex items-center justify-between bg-linear-to-r from-[#B6252A] to-[#501012] text-white px-6 py-4 rounded-xl shadow">
             <h2 className="text-2xl font-bold">DashBoard</h2>
             {photo ? (
               <img

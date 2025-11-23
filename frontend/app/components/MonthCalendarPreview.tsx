@@ -110,7 +110,6 @@ export default function MonthCalendarPreview({
         </div>
       </div>
 
-
       <div className="grid grid-cols-7 gap-1 mb-2">
         {weekdayNames.map((wd) => (
           <div key={wd} className="text-center text-sm font-medium text-gray-400 py-2">
@@ -119,32 +118,44 @@ export default function MonthCalendarPreview({
         ))}
       </div>
 
-  
       <div className="grid grid-cols-7 gap-1">
         {matrix.flat().map((cell, idx) => {
-          const isToday = cell.date.getDate() === today.day && 
-                          cell.date.getMonth() === today.month && 
+          const isToday = cell.date.getDate() === today.day &&
+                          cell.date.getMonth() === today.month &&
                           cell.date.getFullYear() === today.year;
           const isSelected = selected !== null && cell.date.toDateString() === selected.toDateString();
 
+          
           return (
-            <button
-              key={idx}
-              onClick={() => handleClick(cell)}
-              className={`
-                h-10 w-full rounded-full flex items-center justify-center text-sm transition-all
-                ${!cell.isCurrentMonth ? "text-gray-300" : "text-gray-700"}
-                ${isToday && !isSelected ? "border border-blue-400 text-blue-600" : ""}
-                ${isSelected ? "bg-blue-500 text-white" : "hover:bg-gray-100"}
-              `}
-            >
-              {cell.date.getDate()}
-            </button>
+            <div key={idx} className="h-12 flex items-center justify-center">
+              <button
+                onClick={() => handleClick(cell)}
+                aria-label={`Select ${cell.date.toDateString()}`}
+                className={`
+                  flex items-center justify-center
+                  w-10 h-10 rounded-full transition
+                  ${!cell.isCurrentMonth ? "text-gray-300" : "text-gray-700"}
+                  ${isSelected ? "text-white border-2" : ""}
+                  ${!isToday && !isSelected ? "hover:bg-gray-100" : ""}
+                `}
+                style={{
+                 
+                  borderColor: isToday && !isSelected ? "#337AF7" : undefined,
+                  color: isToday && !isSelected ? "#337AF7" : undefined,
+
+                  backgroundColor: isSelected ? "#337AF7" : undefined,
+                  borderWidth: (isToday || isSelected) ? "2px" : undefined,
+                }}
+              >
+                <span className="text-sm font-medium">
+                  {cell.date.getDate()}
+                </span>
+              </button>
+
+            </div>
           );
         })}
       </div>
     </div>
   );
 }
-
-   

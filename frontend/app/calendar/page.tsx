@@ -59,7 +59,7 @@ export default function CalendarPage({ user = null }: { user?: { photoURL?: stri
         <WeeklyCalendar
           selectedDate={selectedDate}
           onDateSelect={setSelectedDate}
-          events={events}
+          initialEvents={events}
         />
       </div>
     </div>

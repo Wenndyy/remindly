@@ -103,7 +103,7 @@ export default function DashboardContent({ user = null }: { user?: { photoURL?: 
             <WeeklyCalendar 
             selectedDate={selectedDate} 
             onDateSelect={setSelectedDate}
-            events={events}
+            initialEvents={events}
             />
 
         </div> 

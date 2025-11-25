@@ -25,6 +25,7 @@ class UserResponse(BaseModel):
     role: str
     is_active: int
     full_name: Optional[str] = None
+    profile_picture: Optional[str] = None
     created_at: Optional[int] = None
     
     class Config:

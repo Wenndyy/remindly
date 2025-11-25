@@ -14,9 +14,9 @@ export default function SlideSidebar({ children }: { children: React.ReactNode }
   const menu = [
     { key: "dashboard", label: "Dashboard", src: "/dashboard.svg", href: "/dashboard" },
     { key: "calendar",  label: "Calendar",  src: "/calender.svg",  href: "/calendar"  }, 
-    { key: "task",      label: "Task",      src: "/task.svg",      href: "/task"      },
+    { key: "schedule",      label: "Schedule",      src: "/task.svg",      href: "/schedule"},
     { key: "project",   label: "Project",   src: "/project.svg",   href: "/project"   },
-    { key: "notification", label: "Notification", src: "/notif.svg", href: "/notification" },
+   
   ];
 
   if (pathname === "/login" || pathname.startsWith("/login/") ||
@@ -88,8 +88,8 @@ export default function SlideSidebar({ children }: { children: React.ReactNode }
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/10 transition"
             aria-label="Logout"
           >
-            <div className="w-8 h-8 rounded-md bg-white/10 flex items-center justify-center">
-              ⎋
+            <div className="w-6 h-6 rounded-md  flex items-center justify-center">
+              <img src="/logout.svg" alt="Logout" className="w-5 h-5" loading="lazy" />
             </div>
             <span className={`font-medium select-none transition-opacity ${open ? "opacity-100" : "opacity-0"}`}>Logout</span>
           </button>

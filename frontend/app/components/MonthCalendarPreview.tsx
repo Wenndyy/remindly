@@ -83,7 +83,7 @@ export default function MonthCalendarPreview({
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm p-5">
+    <div className="bg-white rounded-[15px]  shadow-sm p-5">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-bold text-gray-900">
           {monthNames[month]} {year}

@@ -247,15 +247,10 @@ export default function WeeklyCalendar({
   };
 
   // remove event helper (optional)
-  const handleDeleteEvent = (id?: string) => {
-    if (!id) return;
-    if (!confirm("Delete this event?")) return;
-    setEvents((prev) => prev.filter((p) => p.id !== id));
-  };
 
   // --- render
   return (
-    <div className="bg-white rounded-2xl shadow border overflow-hidden box-border relative">
+    <div className="bg-white rounded-[15px]  shadow border overflow-hidden box-border relative">
       <div className="flex items-center justify-between px-5 py-4 border-b">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-3">
@@ -271,7 +266,7 @@ export default function WeeklyCalendar({
           <button
             onClick={() => openEventModal(null)}
             className="inline-flex items-center gap-2 px-4 py-2"
-            style={{ background: "linear-gradient(90deg,#337AF7,#1E4891)", color: "#fff", borderRadius: 6 }}
+            style={{ background: "#337AF7", color: "#fff", borderRadius: 6 }}
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M12 5v14M5 12h14" strokeLinecap="round" strokeLinejoin="round" />
@@ -361,7 +356,7 @@ export default function WeeklyCalendar({
                       return `${toHHMM(sMin)} - ${toHHMM(eMin)}`;
                     })();
 
-                    return (
+                  return (
                       <div
                         key={`${dayIdx}-${idx}`}
                         style={{
@@ -377,28 +372,55 @@ export default function WeeklyCalendar({
                         }}
                       >
                         <div
-                          className="h-full rounded-md p-2 text-sm border shadow box-border flex flex-col justify-between"
+                          className="h-full p-2 text-sm border shadow box-border flex flex-col"
                           onClick={() => openEventModal(ev)}
                           title={ev.title}
                           style={{
-                            background: "#FFFBEB", // amber-50 like
-                            color: "#92400E", // amber-900-like
+                            background: "#FFFBEB",
+                            color: "#92400E",
                             borderColor: "#FCD34D",
+                            display: "flex",
+                            flexDirection: "column",
+                            overflow: "hidden",
+                            position: "relative", 
                           }}
                         >
-                          <div className="text-xs opacity-80">{displayTime}</div>
-                          <div className="font-medium line-clamp-1 flex items-center justify-between gap-2">
+                      
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              height: 2,
+                              background: "#F59E0B", 
+                              borderTopLeftRadius: 8,
+                              borderTopRightRadius: 8,
+                            }}
+                            aria-hidden
+                          />
+
+                       
+                          <div style={{ paddingTop: 4 }} />
+
+                          {/* Waktu */}
+                          <div className="text-xs opacity-80" style={{ fontWeight: 600 }}>
+                            {displayTime}
+                          </div>
+
+                          <div
+                            className="font-medium flex items-center justify-between gap-2"
+                            style={{
+                              display: "-webkit-box",
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              marginTop: 2,
+                              lineHeight: "1.1rem",
+                            }}
+                          >
                             <span>{ev.title}</span>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteEvent(ev.id);
-                              }}
-                              className="text-xs text-red-500"
-                              aria-label="Delete"
-                            >
-                              ✕
-                            </button>
                           </div>
                         </div>
                       </div>

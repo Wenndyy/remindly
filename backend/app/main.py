@@ -159,3 +159,8 @@ def user_dashboard(current_user: User = Depends(lambda: get_current_user(require
 @app.get("/admin-dashboard")
 def admin_dashboard(current_user: User = Depends(lambda: get_current_user(required_roles=["admin"]))):
     return {"msg": f"Welcome to admin dashboard, {current_user.email}"}
+
+
+@app.get("/me", response_model=UserResponse)
+def get_me(current_user: User = Depends(get_current_user)):
+    return UserResponse.from_orm(current_user)

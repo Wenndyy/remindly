@@ -3,22 +3,56 @@
 import React, { useEffect, useState } from "react";
 import WeeklyCalendar from "../components/WeeklyCalendar";
 import { useRouter } from "next/navigation";
+import axiosClient from "../api/axiosClient";
+import ProfileMenu from "../components/ProfileMenu";
+import CustomCalendar from "../components/CustomCalendar";
+type UserShape = { photoURL?: string | null; name?: string | null } | null;
+export default function CalendarPage({
+  initialUser = null,
+}: {
+  initialUser?: { photoURL?: string; name?: string } | null;
+}) {
+ const router = useRouter();
 
-export default function CalendarPage({ user = null }: { user?: { photoURL?: string; name?: string } | null }) {
-  const router = useRouter();
   const [checkedAuth, setCheckedAuth] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [user, setUser] = useState<UserShape>(initialUser);
+
 
   useEffect(() => {
-    const accessToken = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    let mounted = true;
 
-    if (!accessToken) {
-      router.replace("/login");
-      return;
+    async function bootstrap() {
+      if (typeof window === "undefined") return;
+
+      const token = localStorage.getItem("access_token");
+      if (!token) {
+        router.replace("/login");
+        return;
+      }
+
+      try {
+        const res = await axiosClient.get("/me");
+        if (!mounted) return;
+        setUser({
+          name: res.data.full_name ?? res.data.email ?? "User",
+          photoURL: res.data.profile_picture ?? null,
+        });
+        setCheckedAuth(true);
+      } catch (err) {
+        console.error("Failed to fetch /me:", err);
+        localStorage.removeItem("access_token");
+        router.replace("/login");
+      }
     }
 
-    setCheckedAuth(true);
+    bootstrap();
+
+    return () => {
+      mounted = false;
+    };
   }, [router]);
+
 
   if (!checkedAuth) {
     return <div className="p-6">Memeriksa autentikasi...</div>;
@@ -26,7 +60,6 @@ export default function CalendarPage({ user = null }: { user?: { photoURL?: stri
 
   const photo = user?.photoURL ?? null;
   const name = user?.name ?? "User";
-
   const events = [
     { date: "2025-11-29", startHour: 13, durationHours: 2, time: "13:00", title: "Review" },
     { date: "2025-12-01", startHour: 10, durationHours: 2, time: "10:00", title: "Meeting" },
@@ -37,29 +70,30 @@ export default function CalendarPage({ user = null }: { user?: { photoURL?: stri
 
   return (
     <div className="w-full h-full p-0 m-0">
-      <div className="flex items-center justify-between bg-linear-to-r from-[#B6252A] to-[#501012] text-white px-6 py-4 rounded-xl shadow  w-full mb-[15px]">
-        <h2 className="text-2xl font-bold">Calendar</h2>
-
-        {photo ? (
-          <img
-            src={photo}
-            alt={`${name} profile`}
-            className="w-10 h-10 rounded-full object-cover border-2 border-white"
-          />
-        ) : (
-          <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A13.937 13.937 0 0112 15c2.485 0 4.807.637 6.879 1.804M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
+      <div className="flex items-center justify-between bg-linear-to-r bg-white text-white px-6 py-4 rounded-[15px] shadow mb-[15px]">
+          <h2 className="text-2xl font-bold text-black">Halo, {name}!</h2>
+          <div className="flex items-center gap-4">
+              <img src="/notif-off.svg" alt="notification" />
+              <div className="flex items-center gap-3">
+                  <ProfileMenu
+                    name={name}
+                    photo={photo}
+                    fallback="/person.svg"
+                    onSignOut={() => {
+                    localStorage.removeItem("access_token");
+                    router.replace("/login");
+                    }}
+                  />
+              </div>
           </div>
-        )}
-      </div>
+        </div>
 
       <div className="w-full">
-        <WeeklyCalendar
+        <CustomCalendar
           selectedDate={selectedDate}
           onDateSelect={setSelectedDate}
           initialEvents={events}
+          
         />
       </div>
     </div>

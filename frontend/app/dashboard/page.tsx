@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import MonthCalendarPreview from "../components/MonthCalendarPreview";
-import WeeklyCalendar from "../components/WeeklyCalendar";
+import WeeklyCalendar, { EventItem } from "../components/WeeklyCalendar";
 import { useRouter } from "next/navigation";
 import TaskList from "../components/TaskList";
 import axiosClient from "../api/axiosClient";
@@ -10,17 +10,13 @@ import ProfileMenu from "../components/ProfileMenu";
 
 type UserShape = { photoURL?: string | null; name?: string | null } | null;
 
-export default function DashboardContent({
-  initialUser = null,
-}: {
-  initialUser?: { photoURL?: string; name?: string } | null;
-}) {
+export default function DashboardContent({ initialUser = null }: { initialUser?: { photoURL?: string; name?: string } | null }) {
   const router = useRouter();
 
   const [checkedAuth, setCheckedAuth] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [user, setUser] = useState<UserShape>(initialUser);
-
+  const [events, setEvents] = useState<EventItem[]>([]); 
 
   useEffect(() => {
     let mounted = true;
@@ -35,15 +31,46 @@ export default function DashboardContent({
       }
 
       try {
-        const res = await axiosClient.get("/me");
+        const res = await axiosClient.get("/me", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         if (!mounted) return;
         setUser({
           name: res.data.full_name ?? res.data.email ?? "User",
           photoURL: res.data.profile_picture ?? null,
         });
+
+
+        const eventRes = await axiosClient.get("/events", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (!mounted) return;
+
+      const mappedEvents: EventItem[] = eventRes.data.map((e: any) => {
+        const start = new Date(`${e.start_date}T${e.start_time ?? "00:00"}`);
+        const end = new Date(`${e.end_date}T${e.end_time ?? "23:59"}`);
+        return {
+          id: e.id,
+          title: e.title,
+          date: e.start_date,
+          startHour: start.getHours(),
+          startMinute: start.getMinutes(),
+          endHour: end.getHours(),
+          endMinute: end.getMinutes(),
+          description: e.description,
+          location: e.location,
+          project: e.project,
+          guest: e.guest,
+        };
+      });
+
+
+        setEvents(mappedEvents);
+
         setCheckedAuth(true);
       } catch (err) {
-        console.error("Failed to fetch /me:", err);
+        console.error("Failed to fetch /me or /events:", err);
         localStorage.removeItem("access_token");
         router.replace("/login");
       }
@@ -56,20 +83,12 @@ export default function DashboardContent({
     };
   }, [router]);
 
-
   if (!checkedAuth) {
     return <div className="p-6">Memeriksa autentikasi...</div>;
   }
 
   const photo = user?.photoURL ?? null;
   const name = user?.name ?? "User";
-  const events = [
-    { date: "2025-11-29", startHour: 13, durationHours: 2, time: "13:00", title: "Review" },
-    { date: "2025-12-01", startHour: 10, durationHours: 2, time: "10:00", title: "Meeting" },
-    { date: "2025-12-03", startHour: 9, durationHours: 1, time: "09:00", title: "Project Kickoff" },
-    { date: "2025-12-05", startHour: 15, durationHours: 1, time: "15:00", title: "Presentation" },
-    { date: "2025-12-07", startHour: 11, durationHours: 1, time: "11:00", title: "Performance Review" },
-  ];
 
   return (
     <div className="space-y-6">
@@ -86,19 +105,19 @@ export default function DashboardContent({
             <h2 className="text-2xl font-bold text-black">Halo, {name}!</h2>
 
             <div className="flex items-center gap-4">
-                <img src="/notif-off.svg" alt="notification" />
-                <div className="flex items-center gap-3">
-                  <ProfileMenu
-                    name={name}
-                    photo={photo}
-                    fallback="/person.svg"
-                    onSignOut={() => {
-                      localStorage.removeItem("access_token");
-                      router.replace("/login");
-                    }}
-                  />
-                </div>
+              <img src="/notif-off.svg" alt="notification" />
+              <div className="flex items-center gap-3">
+                <ProfileMenu
+                  name={name}
+                  photo={photo}
+                  fallback="/person.svg"
+                  onSignOut={() => {
+                    localStorage.removeItem("access_token");
+                    router.replace("/login");
+                  }}
+                />
               </div>
+            </div>
           </div>
 
           <WeeklyCalendar selectedDate={selectedDate} onDateSelect={setSelectedDate} initialEvents={events} />

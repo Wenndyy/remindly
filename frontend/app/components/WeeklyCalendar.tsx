@@ -73,10 +73,10 @@ export default function WeeklyCalendar({
   selectedDate,
   onDateSelect,
   initialEvents = [],
-  startHour = 9,
-  endHour = 20,
+  startHour = 1,
+  endHour = 24,
 }: WeeklyCalendarProps) {
-  // hooks
+ 
   const [weekOffset, setWeekOffset] = useState(0);
   const [events, setEvents] = useState<EventItem[]>(initialEvents);
   const [modalOpen, setModalOpen] = useState(false);
@@ -88,7 +88,6 @@ export default function WeeklyCalendar({
   const hoursCount = endHour - startHour + 1;
   const hourRowHeight = 56;
 
-  // build week data
   const weekData = useMemo(() => {
     const today = new Date();
     const currentDay = today.getDay();
@@ -136,14 +135,13 @@ export default function WeeklyCalendar({
     return events.filter((e) => e.date === key);
   };
 
-  // event time helpers
 
   const eventStartMinutes = (ev: EventItem) => {
     const m = ev.startMinute ?? 0;
     return Math.round(ev.startHour * 60 + m);
   };
 
-  // convert EventItem to minutes end
+
   const eventEndMinutes = (ev: EventItem) => {
     if (typeof ev.endHour === "number") {
       const em = (ev.endMinute ?? 0) + ev.endHour * 60;
@@ -174,7 +172,7 @@ export default function WeeklyCalendar({
     return Math.max(24, minutesToPx(dur));
   };
 
-  // controls
+
   const colPercent = 100 / 7;
   const centerGridHeight = hoursCount * hourRowHeight;
   const goPrev = () => setWeekOffset((v) => v - 1);
@@ -196,7 +194,7 @@ export default function WeeklyCalendar({
 
   const badgeDate = weekData.find((d) => d.isToday) ?? weekData[0] ?? { month: "", dayNum: 0 };
 
-  // --- modal handlers
+
   const openEventModal = (ev?: EventItem | null) => {
     setEditingEvent(ev ?? null);
     setModalOpen(true);
@@ -207,15 +205,15 @@ export default function WeeklyCalendar({
     setEditingEvent(null);
   };
 
-  // convert EventForm -> EventItem
+
   const eventFormToItem = (form: EventForm, existing?: EventItem | null): EventItem => {
-    // date must be yyyy-mm-dd
     const id = existing?.id ?? String(Date.now());
     const startParts = form.startTime ? form.startTime.split(":").map((s) => parseInt(s, 10)) : [startHour, 0];
     const endParts = form.endTime ? form.endTime.split(":").map((s) => parseInt(s, 10)) : [startParts[0] + 1, startParts[1]];
+    const dateKey = asDateKey(selectedDate ?? new Date());
     return {
       id,
-      date: form.date,
+      date: dateKey,
       startHour: startParts[0],
       startMinute: startParts[1] ?? 0,
       endHour: endParts[0],
@@ -230,11 +228,6 @@ export default function WeeklyCalendar({
   };
 
   const handleSaveFromModal = (data: EventForm) => {
-    if (!data.date) {
-      // minimal validation
-      alert("Please choose a date");
-      return;
-    }
     const newItem = eventFormToItem(data, editingEvent ?? null);
     setEvents((prev) => {
       const found = prev.find((p) => p.id === newItem.id);
@@ -246,9 +239,7 @@ export default function WeeklyCalendar({
     closeModal();
   };
 
-  // remove event helper (optional)
 
-  // --- render
   return (
     <div className="bg-white rounded-[15px]  shadow border overflow-hidden box-border relative">
       <div className="flex items-center justify-between px-5 py-4 border-b">
@@ -403,7 +394,6 @@ export default function WeeklyCalendar({
                        
                           <div style={{ paddingTop: 4 }} />
 
-                          {/* Waktu */}
                           <div className="text-xs opacity-80" style={{ fontWeight: 600 }}>
                             {displayTime}
                           </div>
@@ -447,7 +437,6 @@ export default function WeeklyCalendar({
             ? {
                 title: editingEvent.title,
                 description: editingEvent.description || "",
-                date: editingEvent.date,
                 startTime: `${String(editingEvent.startHour).padStart(2, "0")}:${String(editingEvent.startMinute ?? 0).padStart(2, "0")}`,
                 endTime:
                   typeof editingEvent.endHour === "number"

@@ -1,5 +1,6 @@
-from pydantic import BaseModel, EmailStr
-from typing import Optional
+from pydantic import BaseModel, EmailStr, constr
+from typing import Optional, List
+from datetime import datetime
 
 class UserCreate(BaseModel):
     email: EmailStr
@@ -35,3 +36,75 @@ class RegisterResponse(BaseModel):
     msg: str
     user: UserResponse
 
+class EventCreate(BaseModel):
+    title: str
+    description: Optional[str] = ""
+    start_date: str
+    end_date: Optional[str] = None 
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    all_day: bool = False
+    guest: Optional[str] = None
+    location: Optional[str] = None
+    project_id: Optional[int] = None 
+
+    class Config:
+        from_attributes = True
+
+class EventResponse(BaseModel):
+    id: int
+    title: str
+    description: Optional[str]
+    start_date: str
+    end_date: str
+    start_time: Optional[str]
+    end_time: Optional[str]
+    all_day: bool
+    guest: Optional[str]
+    location: Optional[str]
+    project_id: Optional[int]
+    user_id: int
+    created_at: Optional[int] = None
+    updated_at: Optional[int] = None
+    
+    # Additional fields for response
+    participants: Optional[int] = 0
+    project_name: Optional[str] = None
+    project_color: Optional[str] = None
+    guest_list: Optional[List[str]] = None
+    time_display: Optional[str] = None
+    
+    # Tambahkan field organizer
+    organizer_id: Optional[int] = None
+    organizer_name: Optional[str] = None
+    organizer_email: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+        
+class ProjectResponse(BaseModel):
+    id: int
+    name: str
+    color: Optional[str] = None
+    meetings: int  
+    user_id: int
+    created_at: Optional[int] = None
+    events: Optional[List[EventResponse]] = None
+
+    class Config:
+        from_attributes = True
+
+class ProjectCreate(BaseModel):
+    name: constr(strip_whitespace=True, min_length=1)
+    color: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class ProjectUpdate(BaseModel):
+    name: Optional[constr(strip_whitespace=True, min_length=1)] = None
+    color: Optional[str] = None
+    meetings: Optional[int] = None
+
+    class Config:
+        from_attributes = True

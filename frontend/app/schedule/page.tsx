@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Key } from "react";
 import { useRouter } from "next/navigation";
 import axiosClient from "../api/axiosClient";
 import ProfileMenu from "../components/ProfileMenu";
 import EventModal, { EventForm } from "../components/EventModal";
-
 
 type UserShape = { photoURL?: string | null; name?: string | null } | null;
 
@@ -15,13 +14,14 @@ type ScheduleEvent = {
   date: string;
   participants: number;
   project: string;
-  projectColor: string;
+  projectColor?: string;
+  projectColorClass?: string; 
 };
 
 export type EventItem = {
   id?: string;
-  date: string;
-  startHour: number;
+  date?: string;
+  startHour?: number;
   startMinute?: number;
   endHour?: number;
   endMinute?: number;
@@ -30,8 +30,27 @@ export type EventItem = {
   description?: string;
   guest?: string;
   location?: string;
-  project?: string;
+  project?: string; 
+  projectId?: number | null;
+  projectColor?: string;
 };
+
+type Project = {
+  id: number;
+  name: string;
+  color?: string | null;
+  meetings?: number;
+};
+
+// Extended EventModal props dengan onFormChange
+interface ExtendedEventModalProps {
+  open: boolean;
+  initial?: Partial<EventForm> | null;
+  onClose: () => void;
+  onSave: (data: EventForm) => void;
+  onFormChange?: (hasChanges: boolean) => void;
+  projects?: Project[];
+}
 
 export default function TaskPage({
   initialUser = null,
@@ -42,57 +61,25 @@ export default function TaskPage({
 
   const [checkedAuth, setCheckedAuth] = useState(false);
   const [user, setUser] = useState<UserShape>(initialUser);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [filter, setFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EventItem | null>(null);
-
-  // FIXED — now events is state with setter
-  const [events, setEvents] = useState<ScheduleEvent[]>([
-    {
-      id: "1",
-      title: "Review",
-      date: "01 November 2025",
-      participants: 10,
-      project: "Project A",
-      projectColor: "#FCD34D",
-    },
-    {
-      id: "2",
-      title: "Meetings",
-      date: "07 November 2025",
-      participants: 7,
-      project: "UI Teams",
-      projectColor: "#60A5FA",
-    },
-    {
-      id: "3",
-      title: "Budget Review Meeting",
-      date: "10 November 2025",
-      participants: 15,
-      project: "Telkom",
-      projectColor: "#F472B6",
-    },
-    {
-      id: "4",
-      title: "Presentation",
-      date: "10 November 2025",
-      participants: 30,
-      project: "Telkom",
-      projectColor: "#F472B6",
-    },
-    {
-      id: "5",
-      title: "UI/UX Webinar",
-      date: "06 November 2025",
-      participants: 320,
-      project: "UI Teams",
-      projectColor: "#60A5FA",
-    },
-  ]);
+  const [events, setEvents] = useState<ScheduleEvent[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [eventToDelete, setEventToDelete] = useState<string | null>(null);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [originalEventData, setOriginalEventData] = useState<EventItem | null>(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(null);
+  const [eventDetails, setEventDetails] = useState<any>(null);
 
   const menuRef = useRef<HTMLDivElement | null>(null);
+  
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -103,40 +90,139 @@ export default function TaskPage({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  useEffect(() => {
-    let mounted = true;
+const mapApiEventToSchedule = (ev: any, projects: Project[]): ScheduleEvent => {
+  const projectName = ev.project_name || "General";
+  
+  const project = projects.find(p => p.id === ev.project_id);
+  const projectColorClass = project?.color || "bg-gray-300";
 
-    async function bootstrap() {
-      if (typeof window === "undefined") return;
+  // Gunakan logika yang sama dengan detail event
+  const participants = ev.participants ?? ev.attendees_count ?? ev.guest_count ?? 0;
 
-      const token = localStorage.getItem("access_token");
-      if (!token) {
-        router.replace("/login");
-        return;
-      }
+  return {
+    id: String(ev.id),
+    title: ev.title,
+    date: ev.start_date,
+    participants: Number(participants), // Pastikan number
+    project: projectName,
+    projectColorClass,
+  };
+};
 
-      try {
-        const res = await axiosClient.get("/me");
-        if (!mounted) return;
-        setUser({
-          name: res.data.full_name ?? res.data.email ?? "User",
-          photoURL: res.data.profile_picture ?? null,
-        });
-        setCheckedAuth(true);
-      } catch (err) {
-        console.error("Failed to fetch /me:", err);
-        localStorage.removeItem("access_token");
-        router.replace("/login");
-      }
+  const loadInitialData = async () => {
+    if (typeof window === "undefined") return;
+
+    const token = localStorage.getItem("access_token");
+    if (!token) {
+      router.replace("/login");
+      return;
     }
 
-    bootstrap();
-    return () => {
-      mounted = false;
-    };
+    try {
+      setIsLoading(true);
+      
+      const userRes = await axiosClient.get("/me");
+      setUser({
+        name: userRes.data.full_name ?? userRes.data.email ?? "User",
+        photoURL: userRes.data.profile_picture ?? null,
+      });
+      setCheckedAuth(true);
+
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+
+      const projRes = await axiosClient.get<Project[]>("/projects", config);
+      const projectsList = projRes.data || [];
+      setProjects(projectsList);
+
+      const evRes = await axiosClient.get("/events", config);
+      const data = Array.isArray(evRes.data) ? evRes.data : [];
+      const mappedEvents = data.map((ev) => mapApiEventToSchedule(ev, projectsList));
+      setEvents(mappedEvents);
+
+    } catch (err) {
+      console.error("Failed to load initial data:", err);
+      localStorage.removeItem("access_token");
+      router.replace("/login");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadInitialData();
   }, [router]);
 
-  if (!checkedAuth) return <div className="p-6">Memeriksa autentikasi...</div>;
+  const reloadEvents = async () => {
+    const token = localStorage.getItem("access_token");
+    if (!token) return;
+
+    try {
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      const evRes = await axiosClient.get("/events", config);
+      const data = Array.isArray(evRes.data) ? evRes.data : [];
+      const mappedEvents = data.map((ev) => mapApiEventToSchedule(ev, projects));
+      setEvents(mappedEvents);
+    } catch (err) {
+      console.error("Failed to reload events:", err);
+    }
+  };
+
+  // Load event details
+const loadEventDetails = async (eventId: string) => {
+  try {
+    const response = await axiosClient.get(`/events/${eventId}`);
+    console.log("Event details API response:", response.data); // DEBUG
+    
+    const raw = response.data;
+    
+    // Gunakan data yang benar-benar ada di response
+  // Di loadEventDetails
+const event = {
+  id: raw.id,
+  title: raw.title,
+  description: raw.description,
+  start_date: raw.start_date,
+  end_date: raw.end_date,
+  start_time: raw.start_time,
+  end_time: raw.end_time,
+  all_day: raw.all_day,
+  location: raw.location,
+
+  participants: raw.participants,
+  guest_list: raw.guest_list || [],
+  
+  // Gunakan field organizer yang baru
+  invitedBy: raw.organizer_name || raw.organizer_email,
+
+  project_id: raw.project_id,
+  project_name: raw.project_name,
+  project_color: raw.project_color,
+
+  time_display: raw.time_display,
+  created_at: raw.created_at,
+  updated_at: raw.updated_at,
+};
+
+    console.log("Processed event details:", event); // DEBUG
+    setEventDetails(event);
+  } catch (err) {
+    console.error("Failed to load event details:", err);
+  }
+};
+
+
+
+  const openEventDetails = async (event: ScheduleEvent) => {
+    setSelectedEvent(event);
+    await loadEventDetails(event.id);
+    setShowDetailsModal(true);
+  };
+
+  const closeEventDetails = () => {
+    setShowDetailsModal(false);
+    setSelectedEvent(null);
+    setEventDetails(null);
+  };
 
   const filteredEvents = events.filter((event) => {
     const matchesFilter = filter === "All" || event.project === filter;
@@ -144,112 +230,440 @@ export default function TaskPage({
     return matchesFilter && matchesSearch;
   });
 
-  // ---- MODAL STATES ----
-  
-
   const openEventModal = (ev?: EventItem | null) => {
-    setEditingEvent(ev ?? null);
+    if (ev) {
+      const proj = projects.find((p) => p.name === ev.project);
+      const eventData = {
+        ...ev,
+        project: ev.project ?? (proj?.name ?? ""),
+        projectId: proj?.id ?? ev.projectId ?? null,
+      };
+      setEditingEvent(eventData);
+      setOriginalEventData(eventData);
+    } else {
+      setEditingEvent(null);
+      setOriginalEventData(null);
+    }
     setModalOpen(true);
+    setHasUnsavedChanges(false);
   };
+
   const closeModal = () => {
+    if (hasUnsavedChanges) {
+      setShowCancelConfirm(true);
+    } else {
+      setModalOpen(false);
+      setEditingEvent(null);
+      setOriginalEventData(null);
+      setHasUnsavedChanges(false);
+    }
+  };
+
+  const handleDiscardChanges = () => {
     setModalOpen(false);
     setEditingEvent(null);
+    setOriginalEventData(null);
+    setHasUnsavedChanges(false);
+    setShowCancelConfirm(false);
   };
 
-  // ---- FIXED: Cleaner conversion ----
-  const eventFormToItem = (form: EventForm, existing?: EventItem | null): EventItem => {
-    const id = existing?.id ?? String(Date.now());
+  const handleSaveFromModal = async (data: EventForm) => {
+    if (!data.title?.trim()) {
+      alert("Please enter event title");
+      return;
+    }
 
-    const startParts = form.startTime
-      ? form.startTime.split(":").map((n) => parseInt(n, 10))
-      : [9, 0];
-
-    const endParts = form.endTime
-      ? form.endTime.split(":").map((n) => parseInt(n, 10))
-      : [startParts[0] + 1, startParts[1]];
-
-    return {
-      id,
-      date: form.date,
-      startHour: startParts[0],
-      startMinute: startParts[1],
-      endHour: endParts[0],
-      endMinute: endParts[1],
-      time: `${startParts[0]}:${startParts[1]} - ${endParts[0]}:${endParts[1]}`,
-      title: form.title || "(No title)",
-      description: form.description,
-      guest: form.guest,
-      location: form.location,
-      project: form.project,
-    };
-  };
-
-  // ---- SAVE HANDLER FIXED ----
-  const handleSaveFromModal = (data: EventForm) => {
-    if (!data.date) {
+    if (!data.startDate) {
       alert("Please choose a date");
       return;
     }
 
-    const newItem = eventFormToItem(data, editingEvent);
+    try {
+      const token = localStorage.getItem("access_token");
+      if (!token) {
+        router.replace("/login");
+        return;
+      }
 
-    // helper to derive a color from project name (fallbacks can be adjusted)
-    const mapProjectColor = (proj?: string) => {
-      if (!proj) return "#888888";
-      if (proj === "Project A") return "#FCD34D";
-      if (proj === "UI Teams") return "#60A5FA";
-      if (proj === "Telkom") return "#F472B6";
-      return "#888888";
-    };
-
-    setEvents((prev) => {
-      const id = newItem.id ?? String(Date.now());
-      const found = prev.find((p) => p.id === id);
-
-      // build a ScheduleEvent from the EventItem (newItem)
-      const scheduleItem: ScheduleEvent = {
-        id,
-        title: newItem.title,
-        date: newItem.date,
-        participants: found?.participants ?? 1,
-        project: newItem.project ?? found?.project ?? "General",
-        projectColor: found?.projectColor ?? mapProjectColor(newItem.project),
+      const config = { 
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        } 
       };
 
-      if (found) {
-        return prev.map((p) => (p.id === id ? scheduleItem : p));
-      }
-      return [...prev, scheduleItem];
-    });
+      const payload: any = {
+        title: data.title.trim(),
+        description: data.description?.trim() || null,
+        start_date: data.startDate,
+        end_date: data.endDate || data.startDate,
+        start_time: data.startTime || null,
+        end_time: data.endTime || null,
+        all_day: data.allDay || false,
+        guest: data.guest?.trim() || null,
+        location: data.location?.trim() || null,
+        project_id: data.projectId || null,
+      };
 
-    closeModal();
+      let response;
+      
+      if (data.id) {
+        response = await axiosClient.put(`/events/${data.id}`, payload, config);
+      } else {
+        response = await axiosClient.post("/events", payload, config);
+      }
+
+      await reloadEvents();
+      setModalOpen(false);
+      setEditingEvent(null);
+      setOriginalEventData(null);
+      setHasUnsavedChanges(false);
+      
+      console.log("Event saved successfully:", response.data);
+      
+    } catch (err: any) {
+      console.error("Failed to save event:", err);
+      const errorMessage = err?.response?.data?.detail 
+        || err?.response?.data?.message 
+        || err?.message 
+        || "Gagal menyimpan event";
+      alert(errorMessage);
+    }
   };
+
+  // Handler untuk mendeteksi perubahan di EventModal
+  const handleEventFormChange = (hasChanges: boolean) => {
+    setHasUnsavedChanges(hasChanges);
+  };
+
+  // Delete confirmation handlers
+  const openDeleteConfirm = (eventId: string) => {
+    setEventToDelete(eventId);
+    setShowDeleteConfirm(true);
+    setOpenMenuId(null);
+  };
+
+  const cancelDelete = () => {
+    setShowDeleteConfirm(false);
+    setEventToDelete(null);
+  };
+
+  const confirmDeleteEvent = async () => {
+    if (!eventToDelete) return;
+    
+    try {
+      const token = localStorage.getItem("access_token");
+      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+      
+      await axiosClient.delete(`/events/${eventToDelete}`, config);
+      await reloadEvents();
+      
+      setShowDeleteConfirm(false);
+      setEventToDelete(null);
+      
+    } catch (err: any) {
+      console.error("Failed to delete event:", err);
+      const errorMessage = err?.response?.data?.detail 
+        || err?.response?.data?.message 
+        || "Gagal menghapus event";
+      alert(errorMessage);
+      setShowDeleteConfirm(false);
+      setEventToDelete(null);
+    }
+  };
+
+  // Format date untuk display
+  const formatDisplayDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const options: Intl.DateTimeFormatOptions = { 
+      weekday: 'long', 
+      day: 'numeric', 
+      month: 'long', 
+      year: 'numeric' 
+    };
+    return date.toLocaleDateString('en-US', options);
+  };
+
+  // Format time untuk display
+  const formatTimeDisplay = (startTime?: string, endTime?: string) => {
+    if (!startTime || !endTime) return "Time not specified";
+    
+    const formatTime = (time: string) => {
+      const [hours, minutes] = time.split(':');
+      const hour = parseInt(hours);
+      return hour >= 12 ? `${hour === 12 ? 12 : hour - 12}:${minutes} PM` : `${hour}:${minutes} AM`;
+    };
+
+    return `${formatTime(startTime)} - ${formatTime(endTime)}`;
+  };
+
+  // Calculate duration
+  const calculateDuration = (startTime?: string, endTime?: string) => {
+    if (!startTime || !endTime) return "";
+    
+    const start = new Date(`2000-01-01T${startTime}`);
+    const end = new Date(`2000-01-01T${endTime}`);
+    const diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+    
+    return `(${diff} Hours)`;
+  };
+
   const photo = user?.photoURL ?? null;
   const name = user?.name ?? "User";
 
+  if (!checkedAuth || isLoading) {
+    return <div className="p-6">Memeriksa autentikasi...</div>;
+  }
 
   return (
     <div className="w-full h-full p-0 m-0">
-     <div className="flex items-center justify-between bg-linear-to-r bg-white text-white px-6 py-4 rounded-[15px] shadow mb-[15px]">
-               <h2 className="text-2xl font-bold text-black">Halo, {name}!</h2>
-               <div className="flex items-center gap-4">
-                   <img src="/notif-off.svg" alt="notification" />
-                   <div className="flex items-center gap-3">
-                       <ProfileMenu
-                         name={name}
-                         photo={photo}
-                         fallback="/person.svg"
-                         onSignOut={() => {
-                         localStorage.removeItem("access_token");
-                         router.replace("/login");
-                         }}
-                       />
-                   </div>
-               </div>
-             </div>
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-60">
+          <div className="bg-white rounded-lg p-6 w-[370px] h-[198px] shadow-lg text-center">
+            <h3 className="text-2xl font-semibold mb-2 text-black">Delete?</h3>
+            <p className="text-[16px] text-[#55565B] mb-6">Are you sure want to delete this Event?</p>
+
+            <div className="flex justify-center gap-4">
+              <button
+                onClick={cancelDelete}
+                className="px-6 py-2 rounded-lg text-black bg-[#E9EDE9] w-[148px] items-center justify-center flex"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={confirmDeleteEvent}
+                className="px-6 py-2 rounded-lg text-white w-[148px] items-center justify-center flex"
+                style={{ background: '#B6252A' }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Confirmation Modal */}
+      {showCancelConfirm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-60">
+          <div className="bg-white rounded-lg p-6 w-[627px] shadow-lg">
+            <h3 className="text-2xl font-semibold mb-2 text-black">Discard Unsaved Changes?</h3>
+            <p className="text-l text-[#55565B] mb-6">Your unsaved change will be discarded.</p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowCancelConfirm(false)}
+                className="px-4 py-2 rounded-lg text-black bg-[#E9EDE9] w-[89px] items-center justify-center flex"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={handleDiscardChanges}
+                className="px-4 py-2 rounded-lg text-white w-[89px] items-center justify-center flex"
+                style={{ background: '#B6252A' }}
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Event Details Modal */}
+{showDetailsModal && eventDetails && (
+  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-60">
+    <div className="bg-white rounded-2xl p-6 w-[92%] max-w-md shadow-xl">
+      {/* Back / Title row (mirip gambar) */}
+      <div className="flex items-center gap-4 mb-4">
+        <button onClick={closeEventDetails} className="p-1 rounded-full hover:bg-gray-100">
+          <svg className="w-5 h-5 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <h2 className="text-xl font-medium text-gray-800">Event Details</h2>
+      </div>
+
+      {/* Review title & invited by */}
+      <div className="mb-4">
+        <h3 className="text-2xl font-bold text-gray-900 mt-6">Review</h3>
+        <p className="text-sm text-gray-500 mt-4">
+          {/* fallback ke beberapa kemungkinan nama field dari API */}
+          Invited by:{" "}
+          <span className="text-gray-700 font-medium ">
+            {eventDetails.invitedBy ??
+             eventDetails.invited_by ??
+             eventDetails.organizer ??
+             eventDetails.host ??
+             "Unknown"}
+          </span>
+        </p>
+      </div>
+
+      {/* Info rows */}
+      <div className="space-y-4 text-gray-700 mt-5">
+        {/* Date */}
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+            <img src="/date.svg" alt="Date" />
+           
+          </div>
+          <div>
+            <div className="text-sm text-gray-500">Date</div>
+            <div className="text-gray-900 font-medium">
+              {formatDisplayDate(
+                eventDetails.date ??
+                eventDetails.start_date ??
+                eventDetails.startDate ??
+                eventDetails.start
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Location */}
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+            <img src="/location.svg" alt="Location" />
+          </div>
+          <div>
+            <div className="text-sm text-gray-500">Location</div>
+            <div className="text-gray-900 font-medium">
+              {eventDetails.location ?? eventDetails.venue ?? "Not specified"}
+            </div>
+          </div>
+        </div>
+
+        {/* Time */}
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+            <img src="/time.svg" alt="Time" />
+          </div>
+          <div>
+            <div className="text-sm text-gray-500">Time</div>
+            <div className="text-gray-900 font-medium">
+              {formatTimeDisplay(
+                eventDetails.start_time ?? eventDetails.start_time_local ?? eventDetails.startTime,
+                eventDetails.end_time   ?? eventDetails.end_time_local   ?? eventDetails.endTime
+              )}
+              <span className="text-gray-500 ml-2">
+                {calculateDuration(
+                  eventDetails.start_time ?? eventDetails.start_time_local ?? eventDetails.startTime,
+                  eventDetails.end_time   ?? eventDetails.end_time_local   ?? eventDetails.endTime
+                )}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Participants (avatars + +N) */}
+{/* Participants Section */}
+<div className="flex items-start gap-3">
+ 
+  <div className="flex-1">
+    
+    
+    {/* Avatar dan count */}
+    <div className="flex items-center gap-3">
+      <div className="flex -space-x-3">
+        {(() => {
+          // Ambil daftar participants dari berbagai kemungkinan field
+          const guestsArray = 
+            eventDetails.guest_list && Array.isArray(eventDetails.guest_list) ? eventDetails.guest_list :
+            eventDetails.guests && Array.isArray(eventDetails.guests) ? eventDetails.guests :
+            eventDetails.attendees && Array.isArray(eventDetails.attendees) ? eventDetails.attendees :
+            [];
+          
+          const totalParticipants = eventDetails.participants ?? guestsArray.length;
+          const displayGuests = guestsArray.slice(0, 3);
+          
+          return (
+            <>
+              {displayGuests.length > 0 ? (
+                <>
+                  <div className="flex -space-x-3">
+                    {displayGuests.map((guest: { name: any; email: any; photo: any; }, index: Key | null | undefined) => {
+                      const guestName = typeof guest === 'string' ? guest : 
+                                      guest?.name ?? guest?.email ?? 'Guest';
+                      const guestPhoto = typeof guest === 'object' ? guest.photo : null;
+                      
+                      return (
+                        <div
+                          key={index}
+                          className="mr-2 w-[50px] h-[50px] rounded-full border-2 border-white bg-gray-100 flex items-center justify-center text-sm font-medium text-gray-800"
+                          style={{ boxShadow: "0 1px 0 rgba(0,0,0,0.04)" }}
+                          title={guestName}
+                        >
+                          {guestPhoto ? (
+                            <img src={guestPhoto} className="w-full h-full rounded-full object-cover" alt={guestName} />
+                          ) : (
+                            guestName.charAt(0).toUpperCase()
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  
+         
+                  {totalParticipants > 3 && (
+                    <div className="ml-4 text-gray-700 font-medium items-center justify-center flex ">
+                      +{totalParticipants - 3}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-gray-500 text-sm">
+                  {totalParticipants > 0 ? `${totalParticipants} participants` : 'No participants'}
+                </div>
+              )}
+            </>
+          );
+        })()}
+      </div>
+    </div>
+   
+   
+  </div>
+</div>
+      </div>
+
+      
+
+      {/* About */}
+      <div>
+        <h4 className="text-sm font-semibold text-gray-900 mb-2 mt-5">About Event</h4>
+        <p className="text-sm text-gray-600 leading-relaxed text-justify">
+          {eventDetails.description ?? eventDetails.details ?? "No description available."}
+        </p>
+      </div>
+
+     
+    </div>
+  </div>
+)}
+
+
+
+      <div className="flex items-center justify-between bg-linear-to-r bg-white text-white px-6 py-4 rounded-[15px] shadow mb-[15px]">
+        <h2 className="text-2xl font-bold text-black">Halo, {name}!</h2>
+        <div className="flex items-center gap-4">
+          <img src="/notif-off.svg" alt="notification" />
+          <div className="flex items-center gap-3">
+            <ProfileMenu
+              name={name}
+              photo={photo}
+              fallback="/person.svg"
+              onSignOut={() => {
+                localStorage.removeItem("access_token");
+                router.replace("/login");
+              }}
+            />
+          </div>
+        </div>
+      </div>
 
       <div className="bg-white rounded-[15px] shadow p-6">
-       {/* Filter and Search Bar */}
         <div className="flex items-center justify-end gap-4 mb-6">
           <select
             value={filter}
@@ -257,9 +671,11 @@ export default function TaskPage({
             className="border border-gray-300 rounded-lg px-4 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="All">All</option>
-            <option value="Project A">Project A</option>
-            <option value="UI Teams">UI Teams</option>
-            <option value="Telkom">Telkom</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.name}>
+                {p.name}
+              </option>
+            ))}
           </select>
 
           <div className="relative" style={{ width: "285px" }}>
@@ -285,30 +701,25 @@ export default function TaskPage({
             </svg>
           </div>
 
-        <button
-            onClick={() => openEventModal(null)}
-            className="inline-flex items-center gap-2 px-4 py-2"
-            style={{ background: "#337AF7", color: "#fff", borderRadius: 6 }}
+          <button
+            onClick={() => openEventModal()}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M12 5v14M5 12h14" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             Add Event
           </button>
-
         </div>
 
-        {/* Events List */}
         <div className="space-y-3">
           {filteredEvents.map((event) => (
             <div
               key={event.id}
               className="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-md transition-shadow relative"
             >
-              {/* Left colored border */}
               <div
-                className="absolute left-0 top-0 bottom-0 w-1 mt-5 mb-5 ml-[15px]"
-                style={{ backgroundColor: event.projectColor }}
+                className={`absolute left-0 top-0 bottom-0 w-1 mt-5 mb-5 ml-[15px] ${event.projectColorClass || 'bg-gray-300'}`}
               ></div>
 
               <div className="flex items-center justify-between pl-3">
@@ -319,20 +730,19 @@ export default function TaskPage({
 
                 <div className="flex items-center gap-8">
                   <div className="flex items-center gap-2 pr-8 border-r border-gray-200">
-                    <img src="/participants.svg" alt="Participants" className="w-6 h-6"/>
-                   
+                    <img src="/participants.svg" alt="Participants" className="w-6 h-6" />
                     <span className="text-sm text-gray-700">{event.participants} Participants</span>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <div
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: event.projectColor }}
-                    ></div>
+                    <div className={`w-3 h-3 rounded-full ${event.projectColorClass || 'bg-gray-300'}`} />
                     <span className="text-sm text-gray-700 font-medium">{event.project}</span>
                   </div>
 
-                  <button className="px-4 py-2 text-sm font-medium text-[#337AF7] border border-[#337AF7] rounded-lg hover:bg-gray-50 transition-colors">
+                  <button 
+                    className="px-4 py-2 text-sm font-medium text-blue-600 border border-blue-600 rounded-lg hover:bg-gray-50 transition-colors"
+                    onClick={() => openEventDetails(event)}
+                  >
                     View Details
                   </button>
 
@@ -346,20 +756,26 @@ export default function TaskPage({
                       <circle cx="12" cy="19" r="2" />
                     </svg>
                   </button>
-                 
-                  {openMenuId === event.id && (
-                    <div
-                      ref={menuRef}
-                      className="absolute right-4 top-14 z-50 shadow-gray-50"
-                    >
-                      {/* Arrow */}
-                      <div className="w-4 h-5 bg-white absolute right-5 -top-2 rotate-45 rounded-tl-md shadow-black border"></div>
 
-                      {/* Menu Box */}
-                      <div className="bg-white shadow-lg border-l border-r border-b rounded-xl p-2 w-36 relative">
+                  {openMenuId === event.id && (
+                    <div ref={menuRef} className="absolute right-4 top-14 z-50 shadow-lg">
+                      <div className="w-4 h-4 bg-white absolute right-5 -top-2 rotate-45 border-l border-t"></div>
+                      <div className="bg-white shadow-lg border rounded-xl p-2 w-36 relative">
                         <button
-                          className="flex items-center gap-3 px-3 py-3 hover:bg-gray-100 w-full text-left"
-                          onClick={() => console.log('Edit', event.id)}
+                          className="flex items-center gap-3 px-3 py-3 hover:bg-gray-100 w-full text-left rounded-lg"
+                          onClick={() => {
+                            openEventModal({
+                              id: event.id,
+                              date: event.date,
+                              title: event.title,
+                              location: "",
+                              description: "",
+                              guest: "",
+                              project: event.project,
+                              projectId: projects.find((p) => p.name === event.project)?.id ?? null,
+                            });
+                            setOpenMenuId(null);
+                          }}
                         >
                           <img src="/edit.svg" className="w-5 h-5" />
                           <span className="text-sm text-gray-800">Edit</span>
@@ -368,8 +784,8 @@ export default function TaskPage({
                         <div className="border-t my-1" />
 
                         <button
-                          className="flex items-center gap-3 px-3 py-3 hover:bg-gray-100 text-red-600 w-full text-left"
-                          onClick={() => console.log('Delete', event.id)}
+                          className="flex items-center gap-3 px-3 py-3 hover:bg-gray-100 text-red-600 w-full text-left rounded-lg"
+                          onClick={() => openDeleteConfirm(event.id)}
                         >
                           <img src="/delete.svg" className="w-5 h-5" />
                           <span className="text-sm">Delete</span>
@@ -377,52 +793,50 @@ export default function TaskPage({
                       </div>
                     </div>
                   )}
-
-
-
                 </div>
-                
               </div>
-              
             </div>
-            
           ))}
 
           {filteredEvents.length === 0 && (
             <div className="text-center py-12 text-gray-500">
-              <p>No events found</p>
+              <p>{events.length === 0 ? "No events yet" : "No events found"}</p>
             </div>
           )}
         </div>
       </div>
-       <EventModal
+
+      {/* EventModal dengan onFormChange yang opsional */}
+      <EventModal
         open={modalOpen}
         initial={
           editingEvent
             ? {
+                id: editingEvent.id ? Number(editingEvent.id) : undefined,
                 title: editingEvent.title,
                 description: editingEvent.description || "",
-                date: editingEvent.date,
-                startTime: `${String(editingEvent.startHour).padStart(2, "0")}:${String(
-                  editingEvent.startMinute ?? 0
-                ).padStart(2, "0")}`,
+                startDate: editingEvent.date || "",
+                endDate: editingEvent.date || "",
+                startTime:
+                  typeof editingEvent.startHour === "number"
+                    ? `${String(editingEvent.startHour).padStart(2, "0")}:${String(editingEvent.startMinute ?? 0).padStart(2, "0")}`
+                    : "",
                 endTime:
-                  editingEvent.endHour !== undefined
-                    ? `${String(editingEvent.endHour).padStart(2, "0")}:${String(
-                        editingEvent.endMinute ?? 0
-                      ).padStart(2, "0")}`
+                  typeof editingEvent.endHour === "number"
+                    ? `${String(editingEvent.endHour).padStart(2, "0")}:${String(editingEvent.endMinute ?? 0).padStart(2, "0")}`
                     : "",
                 allDay: false,
                 guest: editingEvent.guest || "",
                 location: editingEvent.location || "",
-                project: editingEvent.project || "",
+                projectId: editingEvent.projectId ?? undefined,
+                projectName: editingEvent.project || "",
               }
             : null
         }
         onClose={closeModal}
         onSave={handleSaveFromModal}
+       
       />
-
     </div>
   );
 }

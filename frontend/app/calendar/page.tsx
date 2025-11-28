@@ -1,10 +1,9 @@
+// app/calendar/page.tsx (atau file calendar page Anda)
 "use client";
 
 import React, { useEffect, useState } from "react";
-import WeeklyCalendar from "../components/WeeklyCalendar";
 import { useRouter } from "next/navigation";
 import axiosClient from "../api/axiosClient";
-import ProfileMenu from "../components/ProfileMenu";
 import CustomCalendar from "../components/CustomCalendar";
 
 type UserShape = { photoURL?: string | null; name?: string | null } | null;
@@ -20,81 +19,113 @@ export default function CalendarPage({
   const [user, setUser] = useState<UserShape>(initialUser);
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshTrigger, setRefreshTrigger] = useState(0); 
+  const fetchEvents = async () => {
+    try {
+      setLoading(true);
+      const response = await axiosClient.get("/events");
 
-  // Fetch events dari API
-  useEffect(() => {
-    let mounted = true;
+      console.log("Fetched events from API:", response.data);
 
-    async function fetchEvents() {
-      try {
-        setLoading(true);
-        const response = await axiosClient.get("/events");
-        if (!mounted) return;
-
-        console.log("Fetched events from API:", response.data);
-
-        // Format events untuk calendar
-        const formattedEvents = response.data.map((event: any) => {
-          // Parse waktu untuk mendapatkan startHour dan duration
-          let startHour = 9; // default
-          let durationHours = 1; // default 1 jam
-          let time = "09:00"; // default
+      const formattedEvents = response.data.flatMap((event: any) => {
+        const startDate = new Date(event.start_date);
+        const endDate = new Date(event.end_date);
+        const datesInRange = [];
+        
+        // Generate dates from start_date to end_date
+        for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+          const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
           
-          if (event.start_time && event.end_time) {
-            const startTime = event.start_time.split(':');
-            const endTime = event.end_time.split(':');
-            
-            startHour = parseInt(startTime[0]);
-            const startMinute = parseInt(startTime[1]);
-            const endHour = parseInt(endTime[0]);
-            const endMinute = parseInt(endTime[1]);
-            
-            // Calculate duration in hours
-            const startTotalMinutes = startHour * 60 + startMinute;
-            const endTotalMinutes = endHour * 60 + endMinute;
-            durationHours = (endTotalMinutes - startTotalMinutes) / 60;
-            
-            // Minimum duration 0.5 jam, maximum 24 jam
-            durationHours = Math.max(0.5, Math.min(24, durationHours));
-            time = event.start_time;
-          } else if (event.all_day) {
+          let startHour = 9;
+          let startMinute = 0;
+          let endHour = 10;
+          let endMinute = 0;
+          let time = "09:00 - 10:00";
+          
+          // For first day, use actual times
+          if (date.toDateString() === startDate.toDateString()) {
+            if (event.start_time && event.end_time) {
+              const startTime = event.start_time.split(':');
+              const endTime = event.end_time.split(':');
+              
+              startHour = parseInt(startTime[0]);
+              startMinute = parseInt(startTime[1]);
+              endHour = parseInt(endTime[0]);
+              endMinute = parseInt(endTime[1]);
+              time = `${event.start_time} - ${event.end_time}`;
+            } else if (event.all_day) {
+              startHour = 0;
+              startMinute = 0;
+              endHour = 23;
+              endMinute = 59;
+              time = "00:00 - 23:59";
+            }
+          } else {
+            // For subsequent days in range, show as all-day
             startHour = 0;
-            durationHours = 24; // All day event
-            time = "00:00";
+            startMinute = 0;
+            endHour = 23;
+            endMinute = 59;
+            time = "00:00 - 23:59";
           }
 
-          return {
-            id: event.id,
-            date: event.start_date,
+          datesInRange.push({
+            id: `${event.id}-${dateKey}`, // Unique ID untuk setiap hari
+            originalId: event.id,
+            date: dateKey, // Display date untuk calendar
+            startDate: event.start_date, 
+            endDate: event.end_date,
             startHour: startHour,
-            durationHours: durationHours,
+            startMinute: startMinute,
+            endHour: endHour,
+            endMinute: endMinute,
             time: time,
             title: event.title,
             description: event.description,
             location: event.location,
             participants: event.participants || 0,
-            project_name: event.project_name,
+            project: event.project_name,
             project_color: event.project_color,
             all_day: event.all_day,
             start_time: event.start_time,
             end_time: event.end_time,
-            guest: event.guest
-          };
-        });
+            guest: event.guest,
+            isMultiDay: event.start_date !== event.end_date,
+            isFirstDay: date.toDateString() === startDate.toDateString(),
+            isLastDay: date.toDateString() === endDate.toDateString()
+          });
+        }
+        
+        return datesInRange;
+      });
 
-        setEvents(formattedEvents);
-      } catch (err) {
-        console.error("Failed to fetch events:", err);
-        setEvents([]);
-      } finally {
-        if (mounted) setLoading(false);
-      }
+      setEvents(formattedEvents);
+    } catch (err) {
+      console.error("Failed to fetch events:", err);
+      setEvents([]);
+    } finally {
+      setLoading(false);
     }
+  };
+    
 
-    if (checkedAuth) {
+  useEffect(() => {
+    let mounted = true;
+
+    if (checkedAuth && mounted) {
       fetchEvents();
     }
-  }, [checkedAuth]);
+
+    return () => {
+      mounted = false;
+    };
+  }, [checkedAuth, refreshTrigger]); 
+
+
+  const handleEventChange = () => {
+    console.log("Event changed, refreshing data...");
+    setRefreshTrigger(prev => prev + 1); 
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -137,32 +168,24 @@ export default function CalendarPage({
   const photo = user?.photoURL ?? null;
   const name = user?.name ?? "User";
 
-  // Event statis untuk fallback (jika API tidak mengembalikan data)
-  const fallbackEvents = [
-    { date: "2025-11-29", startHour: 13, durationHours: 2, time: "13:00", title: "Review" },
-    { date: "2025-12-01", startHour: 10, durationHours: 2, time: "10:00", title: "Meeting" },
-    { date: "2025-12-03", startHour: 9, durationHours: 1, time: "09:00", title: "Project Kickoff" },
-    { date: "2025-12-05", startHour: 15, durationHours: 1, time: "15:00", title: "Presentation" },
-    { date: "2025-12-07", startHour: 11, durationHours: 1, time: "11:00", title: "Performance Review" },
-  ];
-
-  // Gunakan events dari API jika ada, otherwise use fallback
-  const displayEvents = events.length > 0 ? events : fallbackEvents;
+  const fallback = "/person.svg";
+  const displayEvents = events.length > 0 ? events : undefined;
 
   return (
     <div className="w-full h-full p-0 m-0">
       <div className="flex items-center justify-between bg-white px-6 py-4 rounded-[15px] shadow mb-[15px]">
-        <h2 className="text-2xl font-bold text-black">Halo, {name}!</h2>
+        <h2 className="text-2xl font-bold text-black">Calendar</h2>
         <div className="flex items-center gap-4">
           <img src="/notif-off.svg" alt="notification" />
           <div className="flex items-center gap-3">
-            <ProfileMenu
-              name={name}
-              photo={photo}
-              fallback="/person.svg"
-              onSignOut={() => {
-                localStorage.removeItem("access_token");
-                router.replace("/login");
+            <img
+              src={photo ?? fallback}
+              alt={`${name} profile`}
+              className="w-[59px] h-[59px] rounded-full object-cover border-gray-200"
+              onError={(e) => {
+                const t = e.currentTarget as HTMLImageElement;
+                t.onerror = null;
+                t.src = fallback;
               }}
             />
           </div>
@@ -179,6 +202,7 @@ export default function CalendarPage({
             selectedDate={selectedDate}
             onDateSelect={setSelectedDate}
             initialEvents={displayEvents}
+            onEventChange={handleEventChange} 
           />
         )}
       </div>

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, Key } from "react";
 import { useRouter } from "next/navigation";
 import axiosClient from "../api/axiosClient";
-import ProfileMenu from "../components/ProfileMenu";
+
 import EventModal, { EventForm } from "../components/EventModal";
 
 type UserShape = { photoURL?: string | null; name?: string | null } | null;
@@ -11,7 +11,9 @@ type UserShape = { photoURL?: string | null; name?: string | null } | null;
 type ScheduleEvent = {
   id: string;
   title: string;
-  date: string;
+  dateStart: string;
+  dateEnd?: string;
+  allDay?: boolean;
   participants: number;
   project: string;
   projectColor?: string;
@@ -20,11 +22,13 @@ type ScheduleEvent = {
 
 export type EventItem = {
   id?: string;
-  date?: string;
+  dateStart?: string;
+  dateEnd?: string;
   startHour?: number;
   startMinute?: number;
   endHour?: number;
   endMinute?: number;
+  allDay?: boolean;
   time?: string;
   title: string;
   description?: string;
@@ -42,15 +46,6 @@ type Project = {
   meetings?: number;
 };
 
-// Extended EventModal props dengan onFormChange
-interface ExtendedEventModalProps {
-  open: boolean;
-  initial?: Partial<EventForm> | null;
-  onClose: () => void;
-  onSave: (data: EventForm) => void;
-  onFormChange?: (hasChanges: boolean) => void;
-  projects?: Project[];
-}
 
 export default function TaskPage({
   initialUser = null,
@@ -90,24 +85,113 @@ export default function TaskPage({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-const mapApiEventToSchedule = (ev: any, projects: Project[]): ScheduleEvent => {
-  const projectName = ev.project_name || "General";
-  
-  const project = projects.find(p => p.id === ev.project_id);
-  const projectColorClass = project?.color || "bg-gray-300";
-
-  // Gunakan logika yang sama dengan detail event
-  const participants = ev.participants ?? ev.attendees_count ?? ev.guest_count ?? 0;
-
-  return {
-    id: String(ev.id),
-    title: ev.title,
-    date: ev.start_date,
-    participants: Number(participants), // Pastikan number
-    project: projectName,
-    projectColorClass,
+  const formatDate = (dateString: string) => {
+    if (!dateString) return "Not specified";
+    
+    const date = new Date(dateString);
+    const options: Intl.DateTimeFormatOptions = { 
+      day: 'numeric', 
+      month: 'long', 
+      year: 'numeric' 
+    };
+    return date.toLocaleDateString('id-ID', options);
   };
-};
+
+  const formatDisplayDate = (startDate: string, endDate?: string) => {
+    if (!startDate) return "Not specified";
+    
+    const start = new Date(startDate);
+    
+    if (!endDate || startDate === endDate) {
+      const options: Intl.DateTimeFormatOptions = { 
+        weekday: 'long',
+        day: 'numeric', 
+        month: 'long', 
+        year: 'numeric' 
+      };
+      return start.toLocaleDateString('en-US', options);
+    }
+    
+    const end = new Date(endDate);
+    
+
+    const startOptions: Intl.DateTimeFormatOptions = { 
+      weekday: 'long',
+      day: 'numeric', 
+      month: 'long', 
+      year: 'numeric' 
+    };
+    
+    const endOptions: Intl.DateTimeFormatOptions = { 
+      weekday: 'long',
+      day: 'numeric', 
+      month: 'long', 
+      year: 'numeric' 
+    };
+    
+    const startFormatted = start.toLocaleDateString('en-US', startOptions);
+    const endFormatted = end.toLocaleDateString('en-US', endOptions);
+    
+    return `${startFormatted} - ${endFormatted}`;
+  };
+
+
+const formatTimeDisplay = (startTime?: string, endTime?: string) => {
+    if (!startTime) return "Not specified";
+    
+    const formatTime = (timeString: string) => {
+      const time = new Date(`2000-01-01T${timeString}`);
+      return time.toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit',
+        hour12: true 
+      });
+    };
+
+    if (endTime) {
+      return `${formatTime(startTime)} - ${formatTime(endTime)}`;
+    }
+    
+    return formatTime(startTime);
+  };
+
+
+  const calculateDuration = (startTime?: string, endTime?: string) => {
+    if (!startTime || !endTime) return "";
+    
+    const start = new Date(`2000-01-01T${startTime}`);
+    const end = new Date(`2000-01-01T${endTime}`);
+    const diffMs = end.getTime() - start.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    
+    if (diffHours > 0) {
+      return `(${diffHours}h${diffMinutes > 0 ? ` ${diffMinutes}m` : ''})`;
+    }
+    
+    return `(${diffMinutes}m)`;
+  };
+
+  const mapApiEventToSchedule = (ev: any, projects: Project[]): ScheduleEvent => {
+    const projectName = ev.project_name || "General";
+    
+    const project = projects.find(p => p.id === ev.project_id);
+    const projectColorClass = project?.color || "bg-gray-300";
+
+    
+    const participants = ev.participants ?? ev.attendees_count ?? ev.guest_count ?? 0;
+
+    return {
+      id: String(ev.id),
+      title: ev.title,
+      dateStart: ev.start_date,
+      dateEnd: ev.end_date,
+      allDay: ev.all_day || false,
+      participants: Number(participants), 
+      project: projectName,
+      projectColorClass,
+    };
+  };
 
   const loadInitialData = async () => {
     if (typeof window === "undefined") return;
@@ -167,48 +251,36 @@ const mapApiEventToSchedule = (ev: any, projects: Project[]): ScheduleEvent => {
     }
   };
 
-  // Load event details
-const loadEventDetails = async (eventId: string) => {
-  try {
-    const response = await axiosClient.get(`/events/${eventId}`);
-    console.log("Event details API response:", response.data); // DEBUG
-    
-    const raw = response.data;
-    
-    // Gunakan data yang benar-benar ada di response
-  // Di loadEventDetails
-const event = {
-  id: raw.id,
-  title: raw.title,
-  description: raw.description,
-  start_date: raw.start_date,
-  end_date: raw.end_date,
-  start_time: raw.start_time,
-  end_time: raw.end_time,
-  all_day: raw.all_day,
-  location: raw.location,
+  const loadEventDetails = async (eventId: string) => {
+    try {
+      const response = await axiosClient.get(`/events/${eventId}`);
+      const raw = response.data;
+      const event = {
+        id: raw.id,
+        title: raw.title,
+        description: raw.description,
+        start_date: raw.start_date,
+        end_date: raw.end_date,
+        start_time: raw.start_time,
+        end_time: raw.end_time,
+        all_day: raw.all_day,
+        location: raw.location,
+        participants: raw.participants,
+        guest_list: raw.guest_list || [],
+        invitedBy: raw.organizer_name || raw.organizer_email,
+        project_id: raw.project_id,
+        project_name: raw.project_name,
+        project_color: raw.project_color,
+        time_display: raw.time_display,
+        created_at: raw.created_at,
+        updated_at: raw.updated_at,
+      };
 
-  participants: raw.participants,
-  guest_list: raw.guest_list || [],
-  
-  // Gunakan field organizer yang baru
-  invitedBy: raw.organizer_name || raw.organizer_email,
-
-  project_id: raw.project_id,
-  project_name: raw.project_name,
-  project_color: raw.project_color,
-
-  time_display: raw.time_display,
-  created_at: raw.created_at,
-  updated_at: raw.updated_at,
-};
-
-    console.log("Processed event details:", event); // DEBUG
-    setEventDetails(event);
-  } catch (err) {
-    console.error("Failed to load event details:", err);
-  }
-};
+      setEventDetails(event);
+    } catch (err) {
+      console.error("Failed to load event details:", err);
+    }
+  };
 
 
 
@@ -230,10 +302,60 @@ const event = {
     return matchesFilter && matchesSearch;
   });
 
-  const openEventModal = (ev?: EventItem | null) => {
+const openEventModal = async (ev?: EventItem | null) => {
+  try {
+    if (ev?.id) {
+      // Fetch detail event dari API
+      const response = await axiosClient.get(`/events/${ev.id}`);
+      const eventDetails = response.data;
+      
+      console.log("Event details for editing:", eventDetails);
+      
+      // Format data untuk modal - GUNAKAN PROPERTY YANG SESUAI DENGAN TYPE
+      const eventData: EventItem = {
+        id: eventDetails.id,
+        title: eventDetails.title,
+        description: eventDetails.description || "",
+        dateStart: eventDetails.start_date, // GUNAKAN dateStart, BUKAN startDate
+        dateEnd: eventDetails.end_date || eventDetails.start_date, // GUNAKAN dateEnd, BUKAN endDate
+        startHour: eventDetails.start_time ? parseInt(eventDetails.start_time.split(':')[0]) : undefined,
+        startMinute: eventDetails.start_time ? parseInt(eventDetails.start_time.split(':')[1]) : undefined,
+        endHour: eventDetails.end_time ? parseInt(eventDetails.end_time.split(':')[0]) : undefined,
+        endMinute: eventDetails.end_time ? parseInt(eventDetails.end_time.split(':')[1]) : undefined,
+        allDay: eventDetails.all_day || false,
+        guest: eventDetails.guest || "",
+        location: eventDetails.location || "",
+        project: eventDetails.project_name || "",
+        projectId: eventDetails.project_id || null,
+      };
+      
+      setEditingEvent(eventData);
+      setOriginalEventData(eventData);
+    } else {
+      // Untuk event baru
+      const today = new Date().toISOString().split('T')[0];
+      setEditingEvent({
+        title: "",
+        description: "",
+        dateStart: today, // GUNAKAN dateStart
+        dateEnd: today, // GUNAKAN dateEnd
+        allDay: false,
+        guest: "",
+        location: "",
+        project: "",
+        projectId: null,
+      });
+      setOriginalEventData(null);
+    }
+    setModalOpen(true);
+    setHasUnsavedChanges(false);
+  } catch (error) {
+    console.error("Error loading event details:", error);
+    
+    // Fallback
     if (ev) {
       const proj = projects.find((p) => p.name === ev.project);
-      const eventData = {
+      const eventData: EventItem = {
         ...ev,
         project: ev.project ?? (proj?.name ?? ""),
         projectId: proj?.id ?? ev.projectId ?? null,
@@ -241,12 +363,24 @@ const event = {
       setEditingEvent(eventData);
       setOriginalEventData(eventData);
     } else {
-      setEditingEvent(null);
+      const today = new Date().toISOString().split('T')[0];
+      setEditingEvent({
+        title: "",
+        description: "",
+        dateStart: today,
+        dateEnd: today,
+        allDay: false,
+        guest: "",
+        location: "",
+        project: "",
+        projectId: null,
+      });
       setOriginalEventData(null);
     }
     setModalOpen(true);
     setHasUnsavedChanges(false);
-  };
+  }
+};
 
   const closeModal = () => {
     if (hasUnsavedChanges) {
@@ -331,11 +465,7 @@ const event = {
     }
   };
 
-  // Handler untuk mendeteksi perubahan di EventModal
-  const handleEventFormChange = (hasChanges: boolean) => {
-    setHasUnsavedChanges(hasChanges);
-  };
-
+  const fallback = "/person.svg";
   // Delete confirmation handlers
   const openDeleteConfirm = (eventId: string) => {
     setEventToDelete(eventId);
@@ -370,42 +500,6 @@ const event = {
       setShowDeleteConfirm(false);
       setEventToDelete(null);
     }
-  };
-
-  // Format date untuk display
-  const formatDisplayDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const options: Intl.DateTimeFormatOptions = { 
-      weekday: 'long', 
-      day: 'numeric', 
-      month: 'long', 
-      year: 'numeric' 
-    };
-    return date.toLocaleDateString('en-US', options);
-  };
-
-  // Format time untuk display
-  const formatTimeDisplay = (startTime?: string, endTime?: string) => {
-    if (!startTime || !endTime) return "Time not specified";
-    
-    const formatTime = (time: string) => {
-      const [hours, minutes] = time.split(':');
-      const hour = parseInt(hours);
-      return hour >= 12 ? `${hour === 12 ? 12 : hour - 12}:${minutes} PM` : `${hour}:${minutes} AM`;
-    };
-
-    return `${formatTime(startTime)} - ${formatTime(endTime)}`;
-  };
-
-  // Calculate duration
-  const calculateDuration = (startTime?: string, endTime?: string) => {
-    if (!startTime || !endTime) return "";
-    
-    const start = new Date(`2000-01-01T${startTime}`);
-    const end = new Date(`2000-01-01T${endTime}`);
-    const diff = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-    
-    return `(${diff} Hours)`;
   };
 
   const photo = user?.photoURL ?? null;
@@ -472,193 +566,186 @@ const event = {
       )}
 
       {/* Event Details Modal */}
-{showDetailsModal && eventDetails && (
-  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-60">
-    <div className="bg-white rounded-2xl p-6 w-[92%] max-w-md shadow-xl">
-      {/* Back / Title row (mirip gambar) */}
-      <div className="flex items-center gap-4 mb-4">
-        <button onClick={closeEventDetails} className="p-1 rounded-full hover:bg-gray-100">
-          <svg className="w-5 h-5 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
-        <h2 className="text-xl font-medium text-gray-800">Event Details</h2>
-      </div>
-
-      {/* Review title & invited by */}
-      <div className="mb-4">
-        <h3 className="text-2xl font-bold text-gray-900 mt-6">Review</h3>
-        <p className="text-sm text-gray-500 mt-4">
-          {/* fallback ke beberapa kemungkinan nama field dari API */}
-          Invited by:{" "}
-          <span className="text-gray-700 font-medium ">
-            {eventDetails.invitedBy ??
-             eventDetails.invited_by ??
-             eventDetails.organizer ??
-             eventDetails.host ??
-             "Unknown"}
-          </span>
-        </p>
-      </div>
-
-      {/* Info rows */}
-      <div className="space-y-4 text-gray-700 mt-5">
-        {/* Date */}
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-            <img src="/date.svg" alt="Date" />
-           
-          </div>
-          <div>
-            <div className="text-sm text-gray-500">Date</div>
-            <div className="text-gray-900 font-medium">
-              {formatDisplayDate(
-                eventDetails.date ??
-                eventDetails.start_date ??
-                eventDetails.startDate ??
-                eventDetails.start
-              )}
+      {showDetailsModal && eventDetails && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-60">
+          <div className="bg-white rounded-2xl p-6 w-[92%] max-w-md shadow-xl">
+            {/* Back / Title row (mirip gambar) */}
+            <div className="flex items-center gap-4 mb-4">
+              <button onClick={closeEventDetails} className="p-1 rounded-full hover:bg-gray-100">
+                <svg className="w-5 h-5 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <h2 className="text-xl font-medium text-gray-800">Event Details</h2>
             </div>
-          </div>
-        </div>
 
-        {/* Location */}
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
-            <img src="/location.svg" alt="Location" />
-          </div>
-          <div>
-            <div className="text-sm text-gray-500">Location</div>
-            <div className="text-gray-900 font-medium">
-              {eventDetails.location ?? eventDetails.venue ?? "Not specified"}
+            {/* Review title & invited by */}
+            <div className="mb-4">
+              <h3 className="text-2xl font-bold text-gray-900 mt-6">Review</h3>
+              <p className="text-sm text-gray-500 mt-4">
+                {/* fallback ke beberapa kemungkinan nama field dari API */}
+                Invited by:{" "}
+                <span className="text-gray-700 font-medium ">
+                  {eventDetails.invitedBy ??
+                  eventDetails.invited_by ??
+                  eventDetails.organizer ??
+                  eventDetails.host ??
+                  "Unknown"}
+                </span>
+              </p>
             </div>
-          </div>
-        </div>
 
-        {/* Time */}
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
-            <img src="/time.svg" alt="Time" />
-          </div>
-          <div>
-            <div className="text-sm text-gray-500">Time</div>
-            <div className="text-gray-900 font-medium">
-              {formatTimeDisplay(
-                eventDetails.start_time ?? eventDetails.start_time_local ?? eventDetails.startTime,
-                eventDetails.end_time   ?? eventDetails.end_time_local   ?? eventDetails.endTime
-              )}
-              <span className="text-gray-500 ml-2">
-                {calculateDuration(
-                  eventDetails.start_time ?? eventDetails.start_time_local ?? eventDetails.startTime,
-                  eventDetails.end_time   ?? eventDetails.end_time_local   ?? eventDetails.endTime
-                )}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Participants (avatars + +N) */}
-{/* Participants Section */}
-<div className="flex items-start gap-3">
- 
-  <div className="flex-1">
-    
-    
-    {/* Avatar dan count */}
-    <div className="flex items-center gap-3">
-      <div className="flex -space-x-3">
-        {(() => {
-          // Ambil daftar participants dari berbagai kemungkinan field
-          const guestsArray = 
-            eventDetails.guest_list && Array.isArray(eventDetails.guest_list) ? eventDetails.guest_list :
-            eventDetails.guests && Array.isArray(eventDetails.guests) ? eventDetails.guests :
-            eventDetails.attendees && Array.isArray(eventDetails.attendees) ? eventDetails.attendees :
-            [];
-          
-          const totalParticipants = eventDetails.participants ?? guestsArray.length;
-          const displayGuests = guestsArray.slice(0, 3);
-          
-          return (
-            <>
-              {displayGuests.length > 0 ? (
-                <>
-                  <div className="flex -space-x-3">
-                    {displayGuests.map((guest: { name: any; email: any; photo: any; }, index: Key | null | undefined) => {
-                      const guestName = typeof guest === 'string' ? guest : 
-                                      guest?.name ?? guest?.email ?? 'Guest';
-                      const guestPhoto = typeof guest === 'object' ? guest.photo : null;
-                      
-                      return (
-                        <div
-                          key={index}
-                          className="mr-2 w-[50px] h-[50px] rounded-full border-2 border-white bg-gray-100 flex items-center justify-center text-sm font-medium text-gray-800"
-                          style={{ boxShadow: "0 1px 0 rgba(0,0,0,0.04)" }}
-                          title={guestName}
-                        >
-                          {guestPhoto ? (
-                            <img src={guestPhoto} className="w-full h-full rounded-full object-cover" alt={guestName} />
-                          ) : (
-                            guestName.charAt(0).toUpperCase()
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  
-         
-                  {totalParticipants > 3 && (
-                    <div className="ml-4 text-gray-700 font-medium items-center justify-center flex ">
-                      +{totalParticipants - 3}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="text-gray-500 text-sm">
-                  {totalParticipants > 0 ? `${totalParticipants} participants` : 'No participants'}
+            {/* Info rows */}
+            <div className="space-y-4 text-gray-700 mt-5">
+              {/* Date */}
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                  <img src="/date.svg" alt="Date" />
+                
                 </div>
-              )}
-            </>
-          );
-        })()}
-      </div>
-    </div>
-   
-   
-  </div>
-</div>
-      </div>
+                <div>
+                  <div className="text-sm text-gray-500">Date</div>
+                  <div className="text-gray-900 font-medium">
+                    {formatDisplayDate(
+                      eventDetails.date ??
+                      eventDetails.start_date ??
+                      eventDetails.startDate ??
+                      eventDetails.start, eventDetails.end_date ?? eventDetails.endDate ?? eventDetails.end
+                    )}
+                  </div>
+                </div>
+              </div>
 
-      
+              {/* Location */}
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+                  <img src="/location.svg" alt="Location" />
+                </div>
+                <div>
+                  <div className="text-sm text-gray-500">Location</div>
+                  <div className="text-gray-900 font-medium">
+                    {eventDetails.location ?? eventDetails.venue ?? "Not specified"}
+                  </div>
+                </div>
+              </div>
 
-      {/* About */}
-      <div>
-        <h4 className="text-sm font-semibold text-gray-900 mb-2 mt-5">About Event</h4>
-        <p className="text-sm text-gray-600 leading-relaxed text-justify">
-          {eventDetails.description ?? eventDetails.details ?? "No description available."}
-        </p>
+              {/* Time */}
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+                  <img src="/time.svg" alt="Time" />
+                </div>
+                <div>
+                  <div className="text-sm text-gray-500">Time</div>
+                  <div className="text-gray-900 font-medium">
+                    {formatTimeDisplay(
+                      eventDetails.start_time ?? eventDetails.start_time_local ?? eventDetails.startTime,
+                      eventDetails.end_time   ?? eventDetails.end_time_local   ?? eventDetails.endTime
+                    )}
+                    <span className="text-gray-500 ml-2">
+                      {calculateDuration(
+                        eventDetails.start_time ?? eventDetails.start_time_local ?? eventDetails.startTime,
+                        eventDetails.end_time   ?? eventDetails.end_time_local   ?? eventDetails.endTime
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+
+      <div className="flex items-start gap-3">
+        <div className="flex-1">
+
+          <div className="flex items-center gap-3">
+            <div className="flex -space-x-3">
+              {(() => {
+                const guestsArray = 
+                  eventDetails.guest_list && Array.isArray(eventDetails.guest_list) ? eventDetails.guest_list :
+                  eventDetails.guests && Array.isArray(eventDetails.guests) ? eventDetails.guests :
+                  eventDetails.attendees && Array.isArray(eventDetails.attendees) ? eventDetails.attendees :
+                  [];
+                
+                const totalParticipants = eventDetails.participants ?? guestsArray.length;
+                const displayGuests = guestsArray.slice(0, 3);
+                
+                return (
+                  <>
+                    {displayGuests.length > 0 ? (
+                      <>
+                        <div className="flex -space-x-3">
+                          {displayGuests.map((guest: { name: any; email: any; photo: any; }, index: Key | null | undefined) => {
+                            const guestName = typeof guest === 'string' ? guest : 
+                                            guest?.name ?? guest?.email ?? 'Guest';
+                            const guestPhoto = typeof guest === 'object' ? guest.photo : null;
+                            
+                            return (
+                              <div
+                                key={index}
+                                className="mr-2 w-[50px] h-[50px] rounded-full border-2 border-white bg-gray-100 flex items-center justify-center text-sm font-medium text-gray-800"
+                                style={{ boxShadow: "0 1px 0 rgba(0,0,0,0.04)" }}
+                                title={guestName}
+                              >
+                                {guestPhoto ? (
+                                  <img src={guestPhoto} className="w-full h-full rounded-full object-cover" alt={guestName} />
+                                ) : (
+                                  guestName.charAt(0).toUpperCase()
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        
+              
+                        {totalParticipants > 3 && (
+                          <div className="ml-4 text-gray-700 font-medium items-center justify-center flex ">
+                            +{totalParticipants - 3}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="text-gray-500 text-sm">
+                        {totalParticipants > 0 ? `${totalParticipants} participants` : 'No participants'}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        
+        
+        </div>
       </div>
+            </div>
 
-     
-    </div>
-  </div>
-)}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-900 mb-2 mt-5">About Event</h4>
+              <p className="text-sm text-gray-600 leading-relaxed text-justify">
+                {eventDetails.description ?? eventDetails.details ?? "No description available."}
+              </p>
+            </div>
+
+          
+          </div>
+        </div>
+      )}
 
 
 
       <div className="flex items-center justify-between bg-linear-to-r bg-white text-white px-6 py-4 rounded-[15px] shadow mb-[15px]">
-        <h2 className="text-2xl font-bold text-black">Halo, {name}!</h2>
+        <h2 className="text-2xl font-bold text-black">Schedule</h2>
         <div className="flex items-center gap-4">
           <img src="/notif-off.svg" alt="notification" />
           <div className="flex items-center gap-3">
-            <ProfileMenu
-              name={name}
-              photo={photo}
-              fallback="/person.svg"
-              onSignOut={() => {
-                localStorage.removeItem("access_token");
-                router.replace("/login");
-              }}
-            />
+             <img
+                    src={photo ?? fallback}
+                    alt={`${name} profile`}
+                    className="w-[59px] h-[59px] rounded-full object-cover  border-gray-200"
+                    onError={(e) => {
+                      const t = e.currentTarget as HTMLImageElement;
+                      t.onerror = null;
+                      t.src = fallback;
+                    }}
+                  />
           </div>
         </div>
       </div>
@@ -719,13 +806,13 @@ const event = {
               className="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-md transition-shadow relative"
             >
               <div
-                className={`absolute left-0 top-0 bottom-0 w-1 mt-5 mb-5 ml-[15px] ${event.projectColorClass || 'bg-gray-300'}`}
-              ></div>
+                className={`absolute left-0 top-0 bottom-0 w-1 mt-5 mb-5 ml-[15px]` }
+                style={{ backgroundColor: event.projectColorClass || '#6B7280' }}></div>
 
               <div className="flex items-center justify-between pl-3">
                 <div className="flex-1">
                   <h3 className="text-base font-semibold text-gray-900 mb-1">{event.title}</h3>
-                  <p className="text-sm text-gray-500">{event.date}</p>
+                  <p className="text-sm text-gray-500">{formatDate(event.dateStart)}</p>
                 </div>
 
                 <div className="flex items-center gap-8">
@@ -734,8 +821,8 @@ const event = {
                     <span className="text-sm text-gray-700">{event.participants} Participants</span>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <div className={`w-3 h-3 rounded-full ${event.projectColorClass || 'bg-gray-300'}`} />
+                  <div className="flex items-center gap-2 justify-center ">
+                    <div className={`w-3 h-3 rounded-full `} style={{ backgroundColor: event.projectColorClass || '#6B7280' }}/>
                     <span className="text-sm text-gray-700 font-medium">{event.project}</span>
                   </div>
 
@@ -766,7 +853,9 @@ const event = {
                           onClick={() => {
                             openEventModal({
                               id: event.id,
-                              date: event.date,
+                              dateStart: event.dateStart,
+                              dateEnd: event.dateEnd,
+                              allDay: event.allDay,
                               title: event.title,
                               location: "",
                               description: "",
@@ -806,7 +895,7 @@ const event = {
         </div>
       </div>
 
-      {/* EventModal dengan onFormChange yang opsional */}
+
       <EventModal
         open={modalOpen}
         initial={
@@ -815,8 +904,8 @@ const event = {
                 id: editingEvent.id ? Number(editingEvent.id) : undefined,
                 title: editingEvent.title,
                 description: editingEvent.description || "",
-                startDate: editingEvent.date || "",
-                endDate: editingEvent.date || "",
+                startDate: editingEvent.dateStart || "",
+                endDate: editingEvent.dateEnd || "",
                 startTime:
                   typeof editingEvent.startHour === "number"
                     ? `${String(editingEvent.startHour).padStart(2, "0")}:${String(editingEvent.startMinute ?? 0).padStart(2, "0")}`
@@ -825,7 +914,7 @@ const event = {
                   typeof editingEvent.endHour === "number"
                     ? `${String(editingEvent.endHour).padStart(2, "0")}:${String(editingEvent.endMinute ?? 0).padStart(2, "0")}`
                     : "",
-                allDay: false,
+                allDay: editingEvent.allDay || false,
                 guest: editingEvent.guest || "",
                 location: editingEvent.location || "",
                 projectId: editingEvent.projectId ?? undefined,

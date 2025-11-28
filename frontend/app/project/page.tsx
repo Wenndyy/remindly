@@ -3,13 +3,13 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import axiosClient from "../api/axiosClient";
-import ProfileMenu from "../components/ProfileMenu";
+
 
 type Project = {
   id: number;
   name: string;
-  color?: string | null;
-  meetings: number; // backend mengirimkan meetings (compute-on-read)
+  color?: string | null; 
+  meetings: number;
 };
 
 type UserShape = { photoURL?: string | null; name?: string | null } | null;
@@ -26,25 +26,23 @@ export default function ProjectPage({
 
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Modal States
-  const [showModal, setShowModal] = useState(false); // add modal
-  const [showEditModal, setShowEditModal] = useState(false); // edit modal
+ 
+  const [showModal, setShowModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [pendingCloseModal, setPendingCloseModal] = useState<"add" | "edit" | null>(null);
 
-  // Delete confirmation modal
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingProjectId, setDeletingProjectId] = useState<number | null>(null);
 
   const [projectName, setProjectName] = useState("");
-  const [projectColor, setProjectColor] = useState("");
+  const [projectColor, setProjectColor] = useState(""); // Sekarang menyimpan hex color
   const [showColorDropdown, setShowColorDropdown] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const [editingProjectId, setEditingProjectId] = useState<number | null>(null);
 
-  // Real Project Data (initially empty)
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -52,7 +50,14 @@ export default function ProjectPage({
     p.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Fetch user and projects on mount
+  const colorOptions = [
+    { label: 'Grey', value: '#6B7280', class: 'bg-gray-500' },
+    { label: 'Blue', value: '#3B82F6', class: 'bg-blue-500' },
+    { label: 'Green', value: '#22C55E', class: 'bg-green-500' },
+    { label: 'Yellow', value: '#FB923C', class: 'bg-orange-400' },
+    { label: 'Purple', value: '#A855F7', class: 'bg-purple-500' },
+  ];
+
   useEffect(() => {
     let mounted = true;
 
@@ -66,7 +71,7 @@ export default function ProjectPage({
       }
 
       try {
-        // fetch /me
+      
         const res = await axiosClient.get("/me");
         if (!mounted) return;
         setUser({
@@ -75,7 +80,6 @@ export default function ProjectPage({
         });
         setCheckedAuth(true);
 
-        // then fetch projects
         await loadProjects();
       } catch (err: any) {
         console.error("Failed to bootstrap:", err);
@@ -88,13 +92,11 @@ export default function ProjectPage({
     return () => {
       mounted = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   const loadProjects = async () => {
     setLoading(true);
     try {
-      // backend: GET /projects returns list with meetings count
       const res = await axiosClient.get<Project[]>("/projects");
       setProjects(res.data);
     } catch (err: any) {
@@ -115,16 +117,15 @@ export default function ProjectPage({
 
   const photo = user?.photoURL ?? null;
   const name = user?.name ?? "User";
+  const fallback = "/person.svg";
 
-  // Handle Submit Project (Add)
+
   const handleAddProject = async () => {
     if (!projectName || !projectColor) return alert("Please fill all fields!");
     try {
-      const payload = { name: projectName, color: projectColor };
+      const payload = { name: projectName, color: projectColor }; // Mengirim hex color
       const res = await axiosClient.post("/projects", payload);
-      // prepend new project (backend returns meetings field)
       setProjects((prev) => [res.data, ...prev]);
-      // close modal and reset
       setShowModal(false);
       setProjectName("");
       setProjectColor("");
@@ -135,7 +136,6 @@ export default function ProjectPage({
     }
   };
 
-  // Open edit modal and prefill fields
   const handleOpenEditModal = (project: Project) => {
     setEditingProjectId(project.id);
     setProjectName(project.name);
@@ -144,18 +144,16 @@ export default function ProjectPage({
     setOpenMenuId(null);
   };
 
-  // Save edited project
   const handleUpdateProject = async () => {
     if (!editingProjectId) return;
     if (!projectName || !projectColor) return alert("Please fill all fields!");
 
     try {
-      const payload = { name: projectName, color: projectColor };
+      const payload = { name: projectName, color: projectColor }; // Mengirim hex color
       const res = await axiosClient.put(`/projects/${editingProjectId}`, payload);
 
       setProjects((prev) => prev.map((p) => (p.id === editingProjectId ? res.data : p)));
 
-      // close edit modal and reset
       setShowEditModal(false);
       setEditingProjectId(null);
       setProjectName("");
@@ -167,14 +165,13 @@ export default function ProjectPage({
     }
   };
 
-  // Open delete confirmation modal
   const openDeleteModal = (projectId: number) => {
     setDeletingProjectId(projectId);
     setShowDeleteConfirm(true);
     setOpenMenuId(null);
   };
 
-  // Perform actual delete after confirmation
+
   const confirmDeleteProject = async () => {
     if (deletingProjectId == null) return;
     try {
@@ -190,13 +187,13 @@ export default function ProjectPage({
     }
   };
 
-  // Cancel delete
+
   const cancelDelete = () => {
     setDeletingProjectId(null);
     setShowDeleteConfirm(false);
   };
 
-  // When attempting to close either add or edit modal
+  
   const handleAttemptCloseModal = (modalType: "add" | "edit") => {
     if (projectName || projectColor) {
       setPendingCloseModal(modalType);
@@ -224,6 +221,12 @@ export default function ProjectPage({
     setProjectColor("");
   };
 
+
+  const getColorLabel = (hexColor: string) => {
+    const option = colorOptions.find(opt => opt.value === hexColor);
+    return option ? option.label : "Select Color";
+  };
+
   return (
     <>
       <div className="w-full h-full p-0 m-0">
@@ -232,19 +235,19 @@ export default function ProjectPage({
           <h2 className="text-2xl font-bold text-black">Project</h2>
           <div className="flex items-center gap-4">
             <img src="/notif-off.svg" alt="notification" />
-            <ProfileMenu
-              name={name}
-              photo={photo}
-              fallback="/person.svg"
-              onSignOut={() => {
-                localStorage.removeItem("access_token");
-                router.replace("/login");
-              }}
-            />
+            <img
+                    src={photo ?? fallback}
+                    alt={`${name} profile`}
+                    className="w-[59px] h-[59px] rounded-full object-cover  border-gray-200"
+                    onError={(e) => {
+                      const t = e.currentTarget as HTMLImageElement;
+                      t.onerror = null;
+                      t.src = fallback;
+                    }}
+                  />
           </div>
         </div>
 
-        {/* Body */}
         <div className="bg-white rounded-[15px] shadow p-6">
           <div className="flex items-center justify-between gap-4 mb-4">
             <h3 className="text-lg font-semibold text-black">
@@ -302,7 +305,10 @@ export default function ProjectPage({
                   className="flex items-center justify-between border border-gray-200 rounded-xl px-6 py-4 shadow-sm hover:shadow-md transition cursor-pointer"
                 >
                   <div className="flex items-center gap-4">
-                    <div className={`w-1 h-10 rounded-full ${project.color}`} />
+                    <div 
+                      className="w-1 h-10 rounded-full" 
+                      style={{ backgroundColor: project.color || '#6B7280' }}
+                    />
                     <div>
                       <h4 className="font-semibold text-gray-900 text-[16px]">{project.name}</h4>
                       <p className="text-sm text-gray-500">You have {project.meetings} meetings</p>
@@ -348,15 +354,15 @@ export default function ProjectPage({
                           <div className="border-t my-1" />
 
                          <button
-  className="flex items-center gap-3 px-3 py-3 hover:bg-gray-100 text-red-600 w-full text-left"
-  onClick={(e) => {
-    e.stopPropagation();
-    openDeleteModal(project.id);
-  }}
->
-  <img src="/delete.svg" className="w-5 h-5" />
-  <span className="text-sm">Delete</span>
-</button>
+                            className="flex items-center gap-3 px-3 py-3 hover:bg-gray-100 text-red-600 w-full text-left"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openDeleteModal(project.id);
+                            }}
+                          >
+                          <img src="/delete.svg" className="w-5 h-5" />
+                          <span className="text-sm">Delete</span>
+                        </button>
                         </div>
                       </div>
                     )}
@@ -402,15 +408,14 @@ export default function ProjectPage({
               >
                 {projectColor ? (
                   <span className="flex items-center gap-2">
-                    <span className={`w-4 h-4 rounded-full ${projectColor}`}></span>
-                    {projectColor.includes('blue') && 'Blue'}
-                    {projectColor.includes('orange') && 'Yellow'}
-                    {projectColor.includes('purple') && 'Purple'}
-                    {projectColor.includes('green') && 'Green'}
-                    {projectColor.includes('gray') && 'Grey'}
+                    <span 
+                      className="w-4 h-4 rounded-full" 
+                      style={{ backgroundColor: projectColor }}
+                    ></span>
+                    {getColorLabel(projectColor)}
                   </span>
                 ) : (
-                  "Add Title Project"
+                  "Select Color"
                 )}
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -419,25 +424,19 @@ export default function ProjectPage({
 
               {showColorDropdown && (
                 <div className="absolute z-10 w-full bg-white border border-gray-300 rounded-lg shadow-lg -mt-5">
-                  {[
-                    { label: 'Grey', value: 'bg-gray-500', color: '#6B7280' },
-                    { label: 'Blue', value: 'bg-blue-500', color: '#3B82F6' },
-                    { label: 'Green', value: 'bg-green-500', color: '#22C55E' },
-                    { label: 'Yellow', value: 'bg-orange-400', color: '#FB923C' },
-                    { label: 'Purple', value: 'bg-purple-500', color: '#A855F7' },
-                  ].map((option) => (
+                  {colorOptions.map((option) => (
                     <button
                       key={option.value}
                       type="button"
                       onClick={() => {
-                        setProjectColor(option.value);
+                        setProjectColor(option.value); // Menyimpan hex value
                         setShowColorDropdown(false);
                       }}
                       className="w-full px-4 py-2 hover:bg-gray-50 flex items-center gap-3 text-left"
                     >
                       <span
                         className="w-4 h-4 rounded-full"
-                        style={{ backgroundColor: option.color }}
+                        style={{ backgroundColor: option.value }}
                       ></span>
                       <span className="text-gray-700">{option.label}</span>
                     </button>
@@ -500,12 +499,11 @@ export default function ProjectPage({
               >
                 {projectColor ? (
                   <span className="flex items-center gap-2">
-                    <span className={`w-4 h-4 rounded-full ${projectColor}`}></span>
-                    {projectColor.includes('blue') && 'Blue'}
-                    {projectColor.includes('orange') && 'Yellow'}
-                    {projectColor.includes('purple') && 'Purple'}
-                    {projectColor.includes('green') && 'Green'}
-                    {projectColor.includes('gray') && 'Grey'}
+                    <span 
+                      className="w-4 h-4 rounded-full" 
+                      style={{ backgroundColor: projectColor }}
+                    ></span>
+                    {getColorLabel(projectColor)}
                   </span>
                 ) : (
                   "Select Color"
@@ -517,25 +515,19 @@ export default function ProjectPage({
 
               {showColorDropdown && (
                 <div className="absolute z-10 w-full bg-white border border-gray-300 rounded-lg shadow-lg -mt-5">
-                  {[
-                    { label: 'Grey', value: 'bg-gray-500', color: '#6B7280' },
-                    { label: 'Blue', value: 'bg-blue-500', color: '#3B82F6' },
-                    { label: 'Green', value: 'bg-green-500', color: '#22C55E' },
-                    { label: 'Yellow', value: 'bg-orange-400', color: '#FB923C' },
-                    { label: 'Purple', value: 'bg-purple-500', color: '#A855F7' },
-                  ].map((option) => (
+                  {colorOptions.map((option) => (
                     <button
                       key={option.value}
                       type="button"
                       onClick={() => {
-                        setProjectColor(option.value);
+                        setProjectColor(option.value); // Menyimpan hex value
                         setShowColorDropdown(false);
                       }}
                       className="w-full px-4 py-2 hover:bg-gray-50 flex items-center gap-3 text-left"
                     >
                       <span
                         className="w-4 h-4 rounded-full"
-                        style={{ backgroundColor: option.color }}
+                        style={{ backgroundColor: option.value }}
                       ></span>
                       <span className="text-gray-700">{option.label}</span>
                     </button>

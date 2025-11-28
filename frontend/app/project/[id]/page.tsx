@@ -4,16 +4,17 @@
 import { useEffect, useState, useRef, Key } from "react";
 import { useParams, useRouter } from "next/navigation";
 import axiosClient from "../../api/axiosClient";
-import ProfileMenu from "../../components/ProfileMenu";
-import EventModal from "../../components/EventModal"; // Pastikan komponen ini ada
+
+import EventModal from "../../components/EventModal";
 
 type EventShape = {
   id: number;
   title: string;
-  date: string;
+  dateStart: string;
+  dateEnd: string;
   participants: number;
   project_name: string;
-  project_color: string;
+  project_color: string; 
   project_id: number;
   description?: string;
   location?: string;
@@ -27,6 +28,11 @@ type EventShape = {
   startMinute?: number;
   endHour?: number;
   endMinute?: number;
+  guest_list?: string[];
+  time_display?: string;
+  organizer_id?: number;
+  organizer_name?: string;
+  organizer_email?: string;
 };
 
 type UserShape = { photoURL?: string | null; name?: string | null } | null;
@@ -40,35 +46,46 @@ export default function ProjectDetailPage({
   const router = useRouter();
   const projectId = params?.id;
 
-  // --- Hooks ---
+
   const [checkedAuth, setCheckedAuth] = useState(false);
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState<EventShape[]>([]);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
-
   const [projectName, setProjectName] = useState(`Project ${projectId}`);
   const [user, setUser] = useState<UserShape>(initialUser);
   const photo = user?.photoURL ?? null;
   const name = user?.name ?? "User";
   const [searchQuery, setSearchQuery] = useState("");
-
-  // Modal States
   const [showModal, setShowModal] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const [pendingCloseModal, setPendingCloseModal] = useState<"add" | "edit" | null>(null);
+  const [, setPendingCloseModal] = useState<"add" | "edit" | null>(null);
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectColor, setNewProjectColor] = useState("");
   const [showColorDropdown, setShowColorDropdown] = useState(false);
 
-  // Event Modal States
   const [modalOpen, setModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EventShape | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [eventDetails, setEventDetails] = useState<EventShape | null>(null);
 
-  // Handle click outside untuk close dropdown
+
+  const colorOptions = [
+    { label: 'Grey', value: '#6B7280', class: 'bg-gray-500' },
+    { label: 'Blue', value: '#3B82F6', class: 'bg-blue-500' },
+    { label: 'Green', value: '#22C55E', class: 'bg-green-500' },
+    { label: 'Yellow', value: '#FB923C', class: 'bg-orange-400' },
+    { label: 'Purple', value: '#A855F7', class: 'bg-purple-500' },
+  ];
+
+  
+  const getColorLabel = (hexColor: string) => {
+    const option = colorOptions.find(opt => opt.value === hexColor);
+    return option ? option.label : "Select Color";
+  };
+
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -112,84 +129,132 @@ export default function ProjectDetailPage({
     };
   }, [router]);
 
-// Fetch project dengan events lengkap
-useEffect(() => {
-  let mounted = true;
+ 
+  useEffect(() => {
+    let mounted = true;
 
-  async function fetchProjectAndEvents() {
-    try {
-      setLoading(true);
+    async function fetchProjectAndEvents() {
+      try {
+        setLoading(true);
 
-      const projectRes = await axiosClient.get(`/projects/${projectId}?include_events=true`);
-     
-      
-      if (!mounted) return;
+        const projectRes = await axiosClient.get(`/projects/${projectId}?include_events=true`);
+       
+        if (!mounted) return;
 
-      const projectData = projectRes.data;
-      if (projectData) {
-        setProjectName(projectData.name);
-        
+        const projectData = projectRes.data;
+        if (projectData) {
+          setProjectName(projectData.name);
 
-        if (projectData.events && projectData.events.length > 0) {
-          const formattedEvents = projectData.events.map((event: any) => ({
-            id: event.id,
-            title: event.title,
-            date: event.start_date,
-            participants: event.participants || 0,
-            project_name: event.project_name || projectData.name, 
-            project_color: event.color || "#337AF7",
-            project_id: Number(projectId),
-            description: event.description,
-            location: event.location,
-            start_time: event.start_time,
-            end_time: event.end_time,
-            all_day: event.all_day,
-            guest: event.guest || "",
-            project: projectData.name,
-            projectId: Number(projectId),
-            startHour: event.start_time ? parseInt(event.start_time.split(':')[0]) : undefined,
-            startMinute: event.start_time ? parseInt(event.start_time.split(':')[1]) : undefined,
-            endHour: event.end_time ? parseInt(event.end_time.split(':')[0]) : undefined,
-            endMinute: event.end_time ? parseInt(event.end_time.split(':')[1]) : undefined,
-            // Tambahkan field baru
-            guest_list: event.guest_list || [],
-            time_display: event.time_display,
-            organizer_id: event.organizer_id,
-            organizer_name: event.organizer_name,
-            organizer_email: event.organizer_email
-          }));
-          setEvents(formattedEvents);
-        } else {
-          setEvents([]);
+          if (projectData.events && projectData.events.length > 0) {
+            const formattedEvents = projectData.events.map((event: any) => {
+              const projectColor = 
+                event.color || 
+                event.project_color || 
+                projectData.color || 
+                "#337AF7";
+             
+              
+              return {
+                id: event.id,
+                title: event.title,
+                dateStart: event.start_date,
+                dateEnd: event.end_date,
+                participants: event.participants || 0,
+                project_name: event.project_name || projectData.name, 
+                project_color: projectColor, 
+                project_id: Number(projectId),
+                description: event.description,
+                location: event.location,
+                start_time: event.start_time,
+                end_time: event.end_time,
+                all_day: event.all_day,
+                guest: event.guest || "",
+                project: projectData.name,
+                projectId: Number(projectId),
+                startHour: event.start_time ? parseInt(event.start_time.split(':')[0]) : undefined,
+                startMinute: event.start_time ? parseInt(event.start_time.split(':')[1]) : undefined,
+                endHour: event.end_time ? parseInt(event.end_time.split(':')[0]) : undefined,
+                endMinute: event.end_time ? parseInt(event.end_time.split(':')[1]) : undefined,
+                guest_list: event.guest_list || [],
+                time_display: event.time_display,
+                organizer_id: event.organizer_id,
+                organizer_name: event.organizer_name,
+                organizer_email: event.organizer_email
+              };
+            });
+            setEvents(formattedEvents);
+          } else {
+            setEvents([]);
+          }
         }
+      } catch (err) {
+        console.error("Failed to fetch project data:", err);
+        setEvents([]);
+      } finally {
+        if (mounted) setLoading(false);
       }
-    } catch (err) {
-      console.error("Failed to fetch project data:", err);
-      setEvents([]);
-    } finally {
-      if (mounted) setLoading(false);
     }
-  }
 
-  if (projectId) {
-    fetchProjectAndEvents();
-  }
-  return () => {
-    mounted = false;
-  };
-}, [projectId]);
+    if (projectId) {
+      fetchProjectAndEvents();
+    }
+    return () => {
+      mounted = false;
+    };
+  }, [projectId]);
 
-  // Helper function to format date
+
+ 
   const formatDate = (dateString: string) => {
+    if (!dateString) return "Not specified";
+    
     const date = new Date(dateString);
     const options: Intl.DateTimeFormatOptions = { 
       day: 'numeric', 
       month: 'long', 
       year: 'numeric' 
     };
-    return date.toLocaleDateString('en-US', options);
+    return date.toLocaleDateString('id-ID', options);
   };
 
+  
+  const formatDisplayDate = (startDate: string, endDate?: string) => {
+    if (!startDate) return "Not specified";
+    
+    const start = new Date(startDate);
+    
+    if (!endDate || startDate === endDate) {
+      const options: Intl.DateTimeFormatOptions = { 
+        weekday: 'long',
+        day: 'numeric', 
+        month: 'long', 
+        year: 'numeric' 
+      };
+      return start.toLocaleDateString('en-US', options);
+    }
+    
+    const end = new Date(endDate);
+    
+
+    const startOptions: Intl.DateTimeFormatOptions = { 
+      weekday: 'long',
+      day: 'numeric', 
+      month: 'long', 
+      year: 'numeric' 
+    };
+    
+    const endOptions: Intl.DateTimeFormatOptions = { 
+      weekday: 'long',
+      day: 'numeric', 
+      month: 'long', 
+      year: 'numeric' 
+    };
+    
+    const startFormatted = start.toLocaleDateString('en-US', startOptions);
+    const endFormatted = end.toLocaleDateString('en-US', endOptions);
+    
+    return `${startFormatted} - ${endFormatted}`;
+  };
   // Event Modal Handlers
   const openModal = (event?: EventShape) => {
     if (event) {
@@ -207,15 +272,27 @@ useEffect(() => {
 
   const handleSaveFromModal = async (eventData: any) => {
     try {
+      const formattedData = {
+        title: eventData.title,
+        description: eventData.description || "",
+        start_date: eventData.startDate,
+        end_date: eventData.endDate || eventData.startDate,
+        start_time: eventData.startTime || null,
+        end_time: eventData.endTime || null,
+        all_day: eventData.allDay || false,
+        location: eventData.location || "",
+        guest: eventData.guest || "",
+        project_id: projectId,
+        participants: editingEvent?.participants || 0,
+      };
+
       if (editingEvent) {
-        // Update existing event
-        await axiosClient.put(`/events/${editingEvent.id}`, { payload: eventData });
+        await axiosClient.put(`/events/${editingEvent.id}`, formattedData);
       } else {
-        // Create new event
-        await axiosClient.post("/events", { payload: { ...eventData, project_id: projectId } });
+        await axiosClient.post("/events", formattedData);
       }
       
-      // Refresh events
+
       const projectRes = await axiosClient.get(`/projects/${projectId}`);
       const projectData = projectRes.data;
       
@@ -223,7 +300,8 @@ useEffect(() => {
         const formattedEvents = projectData.events.map((event: any) => ({
           id: event.id,
           title: event.title,
-          date: event.start_date,
+          dateStart: event.start_date,
+          dateEnd: event.end_date,
           participants: event.participants || 0,
           project_name: projectData.name,
           project_color: event.color || "#337AF7",
@@ -245,13 +323,18 @@ useEffect(() => {
       }
       
       closeModal();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to save event:", err);
-      alert("Failed to save event");
+      
+      // Tampilkan error detail dari backend
+      const errorMessage = err.response?.data?.detail || 
+                          err.response?.data?.message || 
+                          "Failed to save event";
+      alert(`Error: ${errorMessage}`);
     }
   };
 
-  // Delete Event Handlers
+  
   const handleDeleteEvent = (event: EventShape) => {
     setEventDetails(event);
     setShowDeleteConfirm(true);
@@ -268,8 +351,6 @@ useEffect(() => {
 
     try {
       await axiosClient.delete(`/events/${eventDetails.id}`);
-      
-      // Remove event from state
       setEvents(events.filter(event => event.id !== eventDetails.id));
       setShowDeleteConfirm(false);
       setEventDetails(null);
@@ -279,7 +360,7 @@ useEffect(() => {
     }
   };
 
-  // Event Details Handlers
+ 
   const openEventDetails = (event: EventShape) => {
     setEventDetails(event);
     setShowDetailsModal(true);
@@ -288,18 +369,6 @@ useEffect(() => {
   const closeEventDetails = () => {
     setShowDetailsModal(false);
     setEventDetails(null);
-  };
-
-  // Format functions for event details
-  const formatDisplayDate = (dateString: string) => {
-    if (!dateString) return "Not specified";
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      weekday: 'long', 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
-    });
   };
 
   const formatTimeDisplay = (startTime?: string, endTime?: string) => {
@@ -380,11 +449,12 @@ useEffect(() => {
     setNewProjectColor("");
   };
 
-  // Filter events based on search query
+
   const filteredEvents = events.filter((event) => {
     const matchesSearch = event.title.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch;
   });
+   const fallback = "/person.svg";
 
   if (!checkedAuth) {
     return <div className="p-6">Memeriksa autentikasi...</div>;
@@ -397,25 +467,23 @@ useEffect(() => {
         <h2 className="text-2xl font-bold text-black">Project</h2>
         <div className="flex items-center gap-4">
           <img src="/notif-off.svg" alt="notification" />
-          <ProfileMenu
-            name={name}
-            photo={photo}
-            fallback="/person.svg"
-            onSignOut={() => {
-              localStorage.removeItem("access_token");
-              router.replace("/login");
-            }}
-          />
+           <img
+                    src={photo ?? fallback}
+                    alt={`${name} profile`}
+                    className="w-[59px] h-[59px] rounded-full object-cover  border-gray-200"
+                    onError={(e) => {
+                      const t = e.currentTarget as HTMLImageElement;
+                      t.onerror = null;
+                      t.src = fallback;
+                    }}
+                  />
         </div>
       </div>
 
       {/* Events Section */}
       <div className="bg-white rounded-[15px] shadow p-6">
-        {/* Search bar + back arrow + project name */}
         <div className="flex items-center justify-between gap-4 mb-4">
-          {/* Left: arrow + project name + search */}
           <div className="flex items-center gap-3 flex-1">
-            {/* Back arrow (kembali ke daftar projects) */}
             <button
               onClick={() => router.push("/project")}
               aria-label="Kembali ke daftar project"
@@ -433,15 +501,14 @@ useEffect(() => {
               </svg>
             </button>
 
-            {/* Project name muncul di samping arrow */}
+       
             <h3 className="text-lg font-semibold text-black min-w-[120px]">
               {projectName}
             </h3>
           </div>
 
-          {/* Right: Add Project button */}
           <div className="flex items-center gap-3">
-            {/* Search input */}
+    
             <div className="relative flex-1 max-w-[480px]">
               <svg
                 className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
@@ -497,13 +564,13 @@ useEffect(() => {
               >
                 <div
                   className="absolute left-0 top-0 bottom-0 w-1 mt-5 mb-5 ml-[15px]"
-                  style={{ backgroundColor: event.project_color || '#337AF7' }}
+                  style={{ backgroundColor: event.project_color || '#337AF7' }} // Menggunakan inline style dengan hex
                 ></div>
 
                 <div className="flex items-center justify-between pl-3">
                   <div className="flex-1">
                     <h3 className="text-base font-semibold text-gray-900 mb-1">{event.title}</h3>
-                    <p className="text-sm text-gray-500">{formatDate(event.date)}</p>
+                    <p className="text-sm text-gray-500">{formatDate(event.dateStart)}</p>
                   </div>
 
                   <div className="flex items-center gap-8">
@@ -515,7 +582,7 @@ useEffect(() => {
                     <div className="flex items-center gap-2">
                       <div 
                         className="w-3 h-3 rounded-full"
-                        style={{ backgroundColor: event.project_color || '#337AF7' }}
+                        style={{ backgroundColor: event.project_color || '#337AF7' }} // Menggunakan inline style dengan hex
                       />
                       <span className="text-sm text-gray-700 font-medium">{event.project_name}</span>
                     </div>
@@ -614,15 +681,14 @@ useEffect(() => {
               >
                 {newProjectColor ? (
                   <span className="flex items-center gap-2">
-                    <span className={`w-4 h-4 rounded-full ${newProjectColor}`}></span>
-                    {newProjectColor.includes('blue') && 'Blue'}
-                    {newProjectColor.includes('orange') && 'Yellow'}
-                    {newProjectColor.includes('purple') && 'Purple'}
-                    {newProjectColor.includes('green') && 'Green'}
-                    {newProjectColor.includes('gray') && 'Grey'}
+                    <span 
+                      className="w-4 h-4 rounded-full" 
+                      style={{ backgroundColor: newProjectColor }} // Menggunakan inline style dengan hex
+                    ></span>
+                    {getColorLabel(newProjectColor)}
                   </span>
                 ) : (
-                  "Add Title Project"
+                  "Select Color"
                 )}
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -631,25 +697,19 @@ useEffect(() => {
 
               {showColorDropdown && (
                 <div className="absolute z-10 w-full bg-white border border-gray-300 rounded-lg shadow-lg -mt-5">
-                  {[
-                    { label: 'Grey', value: 'bg-gray-500', color: '#6B7280' },
-                    { label: 'Blue', value: 'bg-blue-500', color: '#3B82F6' },
-                    { label: 'Green', value: 'bg-green-500', color: '#22C55E' },
-                    { label: 'Yellow', value: 'bg-orange-400', color: '#FB923C' },
-                    { label: 'Purple', value: 'bg-purple-500', color: '#A855F7' },
-                  ].map((option) => (
+                  {colorOptions.map((option) => (
                     <button
                       key={option.value}
                       type="button"
                       onClick={() => {
-                        setNewProjectColor(option.value);
+                        setNewProjectColor(option.value); // Menyimpan hex value
                         setShowColorDropdown(false);
                       }}
                       className="w-full px-4 py-2 hover:bg-gray-50 flex items-center gap-3 text-left"
                     >
                       <span
                         className="w-4 h-4 rounded-full"
-                        style={{ backgroundColor: option.color }}
+                        style={{ backgroundColor: option.value }} // Menggunakan inline style dengan hex
                       ></span>
                       <span className="text-gray-700">{option.label}</span>
                     </button>
@@ -713,8 +773,8 @@ useEffect(() => {
                 id: editingEvent.id ? Number(editingEvent.id) : undefined,
                 title: editingEvent.title,
                 description: editingEvent.description || "",
-                startDate: editingEvent.date || "",
-                endDate: editingEvent.date || "",
+                startDate: editingEvent.dateStart || "",
+                endDate: editingEvent.dateEnd || "",
                 startTime:
                   typeof editingEvent.startHour === "number"
                     ? `${String(editingEvent.startHour).padStart(2, "0")}:${String(editingEvent.startMinute ?? 0).padStart(2, "0")}`
@@ -723,7 +783,7 @@ useEffect(() => {
                   typeof editingEvent.endHour === "number"
                     ? `${String(editingEvent.endHour).padStart(2, "0")}:${String(editingEvent.endMinute ?? 0).padStart(2, "0")}`
                     : "",
-                allDay: false,
+                allDay: editingEvent.all_day || false,
                 guest: editingEvent.guest || "",
                 location: editingEvent.location || "",
                 projectId: editingEvent.projectId ?? undefined,
@@ -782,7 +842,7 @@ useEffect(() => {
               <p className="text-sm text-gray-500 mt-4">
                 Invited by:{" "}
                 <span className="text-gray-700 font-medium">
-                  {eventDetails.guest || "Unknown"}
+                  {eventDetails.organizer_name || user?.name || "Unknown"}
                 </span>
               </p>
             </div>
@@ -797,7 +857,7 @@ useEffect(() => {
                 <div>
                   <div className="text-sm text-gray-500">Date</div>
                   <div className="text-gray-900 font-medium">
-                    {formatDisplayDate(eventDetails.date)}
+                    {formatDisplayDate(eventDetails.dateStart , eventDetails.dateEnd)}
                   </div>
                 </div>
               </div>
@@ -842,7 +902,6 @@ useEffect(() => {
                         if (totalParticipants > 0) {
                           return (
                             <>
-                              {/* Placeholder for participant avatars */}
                               {Array.from({ length: Math.min(3, totalParticipants) }).map((_, index) => (
                                 <div
                                   key={index}
@@ -874,7 +933,7 @@ useEffect(() => {
               </div>
             </div>
 
-            {/* About */}
+
             <div>
               <h4 className="text-sm font-semibold text-gray-900 mb-2 mt-5">About Event</h4>
               <p className="text-sm text-gray-600 leading-relaxed text-justify">

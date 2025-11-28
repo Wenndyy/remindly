@@ -62,10 +62,11 @@ export default function SlideSidebar({ children }: { children: React.ReactNode }
   return (
     <div className="flex min-h-screen bg-gray-100">
       <aside className={`flex flex-col transition-all duration-300 ${open ? "w-72" : "w-20"} bg-linear-to-b from-[#B6252A] to-[#501012] text-white rounded-r-3xl overflow-hidden shadow-lg z-20`}>
-        <div className="flex items-center justify-between px-6 py-6">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-center px-6 py-6">
+          <div className="flex items-center gap-3 justify-center ">
+            <img src="/logo.svg" alt="Logo" className="w-[35px] h-[35px]" />
             <Link href="/dashboard" className="flex items-center gap-3">
-              <div className={`font-bold text-2xl select-none transition-opacity ${open ? "opacity-100" : "opacity-0"}`}>Remindly</div>
+              <div className={`font-bold text-3xl select-none transition-opacity ${open ? "opacity-100" : "opacity-0"}`}>Remindly</div>
               {!open && <div className="w-8 h-8 rounded-md bg-white/10 flex items-center justify-center">R</div>}
             </Link>
           </div>

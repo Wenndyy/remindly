@@ -80,7 +80,7 @@ export default function EventModal({
 
   const [discardOpen, setDiscardOpen] = useState(false);
 
-  // debounce helper
+
   const debounce = (fn: (...args: any[]) => void, wait = 300) => {
     let t: ReturnType<typeof setTimeout> | null = null;
     return (...args: any[]) => {
@@ -89,7 +89,7 @@ export default function EventModal({
     };
   };
 
-  // load projects when modal opens
+
   useEffect(() => {
     if (!open) return;
     let mounted = true;
@@ -114,7 +114,7 @@ export default function EventModal({
     };
   }, [open]);
 
-  // initialize form when edit / open
+
   useEffect(() => {
     if (initial) {
       setForm((s) => ({
@@ -139,7 +139,7 @@ export default function EventModal({
     }
   }, [initial, open]);
 
-  // fetch matching users from backend
+
   const fetchUsers = async (q: string) => {
     setUsersLoading(true);
     try {
@@ -156,11 +156,9 @@ export default function EventModal({
     }
   };
 
-  // debounce fetch
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+ 
   const debouncedFetch = React.useCallback(debounce(fetchUsers, 250), []);
 
-  // trigger remote search
   useEffect(() => {
     const q = guestInput.trim();
     if (!q) {
@@ -172,7 +170,6 @@ export default function EventModal({
     debouncedFetch(q);
   }, [guestInput, debouncedFetch]);
 
-  // click outside: close suggestions & project dropdown
   useEffect(() => {
     function onDoc(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -186,7 +183,6 @@ export default function EventModal({
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
-  // add guest from API user
   function addGuestFromUser(u: User) {
     setSelectedGuests((s) => [...s, { email: u.email, full_name: u.full_name ?? u.email, profile_picture: u.profile_picture }]);
     setGuestInput("");
@@ -195,7 +191,6 @@ export default function EventModal({
     setTimeout(() => inputRef.current?.focus(), 0);
   }
 
-  // add arbitrary email
   function addGuestByEmail(email: string) {
     const normalized = email.trim();
     if (!normalized) return;
@@ -223,13 +218,82 @@ export default function EventModal({
     }
   }
 
-  // Save -> send to API (project_id if set)
+  const today = new Date();
+  const todayStr = today.toISOString().split("T")[0];
+
+  function isTimeGreater(t1: string, t2: string) {
+    return t1.localeCompare(t2) === 1;
+  }
+
+  function isTimeLess(t1: string, t2: string) {
+    return t1.localeCompare(t2) === -1;
+  }
+
+
   async function handleSave() {
+
+
+    if (!form.title.trim()) {
+      alert("Title is required");
+      return;
+    }
+    if (!form.startDate) {
+      alert("Start date is required");
+      return;
+    }
+
+
+    if (form.allDay) {
+
+      if (form.startDate < todayStr) {
+        alert("Start date cannot be before today");
+        return;
+      }
+
+      if (!form.endDate) {
+        alert("End date is required");
+        return;
+      }
+      if (form.endDate < form.startDate) {
+        alert("End date cannot be before start date");
+        return;
+      }
+
+    } else {
+
+      if (form.startDate < todayStr) {
+        alert("Start date cannot be before today");
+        return;
+      }
+
+
+      if (!form.startTime || !form.endTime) {
+        alert("Start time and end time are required");
+        return;
+      }
+
+      if (form.startDate === todayStr) {
+        const hh = today.getHours().toString().padStart(2, "0");
+        const mm = today.getMinutes().toString().padStart(2, "0");
+        const currentTime = `${hh}:${mm}`;
+
+        if (!isTimeGreater(form.startTime, currentTime)) {
+          alert("Start time must be greater than current time");
+          return;
+        }
+      }
+
+      if (isTimeLess(form.endTime, form.startTime)) {
+        alert("End time cannot be earlier than start time");
+        return;
+      }
+    }
+
     const payload: any = {
       title: form.title,
       description: form.description,
       start_date: form.startDate,
-      end_date: form.endDate,
+      end_date: form.allDay ? form.endDate : form.startDate,
       start_time: form.allDay ? "00:00" : form.startTime,
       end_time: form.allDay ? "23:59" : form.endTime,
       all_day: form.allDay,
@@ -274,7 +338,7 @@ export default function EventModal({
     }
   }
 
-  // dirty check & discard modal
+
   function isDirty() {
     const base = initial ? { ...empty, ...initial } : empty;
     const baseGuest = base.guest ? base.guest.split(",").map((g) => g.trim()).filter(Boolean).join(",") : "";
@@ -312,7 +376,6 @@ export default function EventModal({
     }, 0);
   }
 
-  // simple tailwind bg detection helper (optional)
   const isTailwindBg = (c?: string | null) => typeof c === "string" && /^bg-[a-z0-9-]+$/.test(c);
 
   if (!open) return null;
@@ -362,6 +425,7 @@ export default function EventModal({
                   <input
                     type="date"
                     value={form.startDate}
+                    min={todayStr}
                     onChange={(e) => setForm({ ...form, startDate: e.target.value })}
                     className="w-full border rounded-xl px-2 py-2 text-sm text-[#55565B]"
                   />
@@ -378,13 +442,28 @@ export default function EventModal({
                       style={{ width: 120 }}
                     />
                     <span className="mx-3 text-sm text-[#888]" aria-hidden>—</span>
+                  <div className="flex flex-col">
                     <input
                       type="time"
                       value={form.endTime}
+                      min={form.startTime}
                       onChange={(e) => setForm({ ...form, endTime: e.target.value })}
-                      className="border rounded-xl px-2 py-2 text-sm text-[#55565B]"
+                      className={`border rounded-xl px-2 py-2 text-sm text-[#55565B] ${
+                        form.endTime && form.startTime && form.endTime < form.startTime
+                          ? "border-red-500"
+                          : ""
+                      }`}
                       style={{ width: 120 }}
                     />
+
+                    {form.endTime && form.startTime && form.endTime < form.startTime && (
+                      <span className="text-red-500 text-xs mt-1">
+                        End time cannot be earlier than start time
+                      </span>
+                    )}
+                  </div>
+
+
                   </div>
                 </div>
               </div>
@@ -394,6 +473,7 @@ export default function EventModal({
                   <label className="block text-xs text-[#55565B] mb-1">Start Date</label>
                   <input
                     type="date"
+                    min={todayStr}
                     value={form.startDate}
                     onChange={(e) => setForm({ ...form, startDate: e.target.value })}
                     className="w-full border rounded-xl px-2 py-2 text-sm text-[#55565B]"
@@ -507,7 +587,7 @@ export default function EventModal({
               />
             </div>
 
-            {/* Project picker (dropdown list from API) */}
+      
             <div className="mb-6">
               <label className="block text-xs text-[#55565B] mb-1">Project</label>
               <div style={{ maxWidth: 320 }} ref={projRef} className="relative">

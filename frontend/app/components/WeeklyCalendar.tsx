@@ -4,8 +4,10 @@ import React, { useMemo, useState, useEffect } from "react";
 import EventModal, { EventForm } from "./EventModal";
 
 export type EventItem = {
-  id?: string;           // optional id for edit
-  date: string;          // yyyy-mm-dd
+  id?: string;
+  date: string;
+  startDate?: string; 
+  endDate?: string; 
   startHour: number;
   startMinute?: number;
   endHour?: number;
@@ -18,6 +20,16 @@ export type EventItem = {
   guest?: string;
   location?: string;
   project?: string;
+  projectId?: string | number | null;
+  start_time?: string;  
+  end_time?: string;   
+  all_day?: boolean;  
+  project_color?: string; 
+  color?: string;      
+  isMultiDay?: boolean;
+  isFirstDay?: boolean;
+  isLastDay?: boolean;
+  originalId?: string;
 };
 
 type WeeklyCalendarProps = {
@@ -26,6 +38,7 @@ type WeeklyCalendarProps = {
   initialEvents?: EventItem[];
   startHour?: number;
   endHour?: number;
+  onEventsChange?: () => void;
 };
 
 function BadgeCalendar({ month, day }: { month: string; day: number | string }) {
@@ -75,18 +88,25 @@ export default function WeeklyCalendar({
   initialEvents = [],
   startHour = 1,
   endHour = 24,
+  onEventsChange,
 }: WeeklyCalendarProps) {
- 
   const [weekOffset, setWeekOffset] = useState(0);
-  const [events, setEvents] = useState<EventItem[]>(initialEvents);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EventItem | null>(null);
+  const events = initialEvents;
 
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-  const hoursCount = endHour - startHour + 1;
-  const hourRowHeight = 56;
+  const asDateKey = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+  // PERBAIKAN: Gunakan fungsi filter yang sederhana
+  const getEventsForDateKey = (key: string) => {
+    // Langsung filter berdasarkan date, karena multi-day sudah di-handle di fetchEvents
+    const filteredEvents = events.filter((e) => e.date === key);
+    return filteredEvents;
+  };
 
   const weekData = useMemo(() => {
     const today = new Date();
@@ -117,6 +137,21 @@ export default function WeeklyCalendar({
     return days;
   }, [weekOffset]);
 
+  const shouldUse24HourFormat = useMemo(() => {
+    for (const day of weekData) {
+      const dayEvents = getEventsForDateKey(asDateKey(day.date));
+      for (const event of dayEvents) {
+        if (event.startHour >= 13 || (event.endHour && event.endHour >= 13)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }, [events, weekData]);
+
+  const hoursCount = shouldUse24HourFormat ? (endHour - startHour + 1) : Math.min(12 - startHour + 1, 12);
+  const hourRowHeight = 56;
+
   const weekRange = useMemo(() => {
     if (!weekData || weekData.length === 0) return { startStr: "", endStr: "" };
     const s = weekData[0];
@@ -127,20 +162,11 @@ export default function WeeklyCalendar({
     };
   }, [weekData]);
 
-  const asDateKey = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-
-  const getEventsForDay = (date: Date) => {
-    const key = asDateKey(date);
-    return events.filter((e) => e.date === key);
-  };
-
-
+ 
   const eventStartMinutes = (ev: EventItem) => {
     const m = ev.startMinute ?? 0;
     return Math.round(ev.startHour * 60 + m);
   };
-
 
   const eventEndMinutes = (ev: EventItem) => {
     if (typeof ev.endHour === "number") {
@@ -172,7 +198,6 @@ export default function WeeklyCalendar({
     return Math.max(24, minutesToPx(dur));
   };
 
-
   const colPercent = 100 / 7;
   const centerGridHeight = hoursCount * hourRowHeight;
   const goPrev = () => setWeekOffset((v) => v - 1);
@@ -194,7 +219,6 @@ export default function WeeklyCalendar({
 
   const badgeDate = weekData.find((d) => d.isToday) ?? weekData[0] ?? { month: "", dayNum: 0 };
 
-
   const openEventModal = (ev?: EventItem | null) => {
     setEditingEvent(ev ?? null);
     setModalOpen(true);
@@ -206,39 +230,84 @@ export default function WeeklyCalendar({
   };
 
 
-  const eventFormToItem = (form: EventForm, existing?: EventItem | null): EventItem => {
-    const id = existing?.id ?? String(Date.now());
-    const startParts = form.startTime ? form.startTime.split(":").map((s) => parseInt(s, 10)) : [startHour, 0];
-    const endParts = form.endTime ? form.endTime.split(":").map((s) => parseInt(s, 10)) : [startParts[0] + 1, startParts[1]];
-    const dateKey = asDateKey(selectedDate ?? new Date());
-    return {
-      id,
-      date: dateKey,
-      startHour: startParts[0],
-      startMinute: startParts[1] ?? 0,
-      endHour: endParts[0],
-      endMinute: endParts[1] ?? 0,
-      time: form.startTime && form.endTime ? `${form.startTime} - ${form.endTime}` : undefined,
-      title: form.title || "(No title)",
-      description: form.description,
-      guest: form.guest,
-      location: form.location,
-      project: form.project,
-    };
-  };
-
-  const handleSaveFromModal = (data: EventForm) => {
-    const newItem = eventFormToItem(data, editingEvent ?? null);
-    setEvents((prev) => {
-      const found = prev.find((p) => p.id === newItem.id);
-      if (found) {
-        return prev.map((p) => (p.id === newItem.id ? newItem : p));
-      }
-      return [...prev, newItem];
-    });
+  const handleSaveFromModal = () => {
+    if (onEventsChange) {
+      onEventsChange();
+    }
     closeModal();
   };
 
+  
+ const getContrastColor = (hexColor: string): string => {
+    if (!hexColor || hexColor.length < 7) return '#000000';
+    
+    try {
+      const r = parseInt(hexColor.slice(1, 3), 16);
+      const g = parseInt(hexColor.slice(3, 5), 16);
+      const b = parseInt(hexColor.slice(5, 7), 16);
+      
+      const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+      return brightness > 128 ? '#000000' : '#FFFFFF';
+    } catch {
+      return '#000000';
+    }
+  };
+
+
+  const formatHourLabel = (hour: number) => {
+    if (shouldUse24HourFormat) {
+      return `${hour}:00`;
+    } else {
+      if (hour === 0) return "12 AM";
+      if (hour < 12) return `${hour} AM`;
+      if (hour === 12) return "12 PM";
+      return `${hour - 12} PM`;
+    }
+  };
+
+  const getDisplayTime = (ev: EventItem) => {
+    if (ev.isMultiDay) {
+      if (ev.isFirstDay && ev.start_time) {
+        return `${ev.start_time} - 23:59`;
+      } else if (ev.isLastDay && ev.end_time) {
+        return `00:00 - ${ev.end_time}`;
+      } else {
+        return "00:00 - 23:59";
+      }
+    }
+    
+    return ev.start_time && ev.end_time 
+      ? `${ev.start_time} - ${ev.end_time}`
+      : ev.time ?? `${String(ev.startHour).padStart(2, "0")}:${String(ev.startMinute ?? 0).padStart(2, "0")} - ${String(ev.endHour ?? ev.startHour + 1).padStart(2, "0")}:${String(ev.endMinute ?? 0).padStart(2, "0")}`;
+  };
+
+  // PERBAIKAN: Tambahkan styling khusus untuk multi-day events
+  const getEventStyle = (ev: EventItem) => {
+    const eventColor = ev.project_color || ev.color || "#F59E0B";
+    const eventBgColor = ev.project_color ? `${ev.project_color}70` : "#FFFBEB";
+    const eventTextColor = getContrastColor(eventColor);
+    
+    let borderStyle = {};
+    if (ev.isMultiDay) {
+      borderStyle = {
+        borderLeftWidth: '4px',
+        borderLeftColor: eventColor,
+        borderTopColor: eventColor,
+        borderRightColor: eventColor,
+        borderBottomColor: eventColor
+      };
+    }
+
+    return {
+      background: eventBgColor,
+      color: eventTextColor,
+      borderColor: eventColor,
+      ...borderStyle
+    };
+  };
+
+
+  
 
   return (
     <div className="bg-white rounded-[15px]  shadow border overflow-hidden box-border relative">
@@ -279,16 +348,24 @@ export default function WeeklyCalendar({
             </div>
 
             <div className="flex-1 grid grid-cols-7">
-              {weekData.map((d) => (
-                <div
-                  key={asDateKey(d.date)}
-                  onClick={() => onDateSelect?.(d.date)}
-                  className={`py-3 text-center border-r last:border-r-0 cursor-pointer transition-colors ${d.isToday ? "bg-blue-50" : "hover:bg-gray-50"}`}
-                >
-                  <div className={`text-sm font-semibold ${d.isToday ? "text-[#337AF7]" : "text-gray-700"}`}>{d.month} {d.dayNum}</div>
-                  <div className={`text-xs ${d.isToday ? "text-[#337AF7]" : "text-gray-400"}`}>{d.dayName}</div>
+             {weekData.map((d) => (
+              <div
+                key={asDateKey(d.date)}
+                onClick={() => onDateSelect?.(d.date)}
+                className={`py-3 text-center border-r last:border-r-0 cursor-pointer transition-colors ${
+                  d.isToday 
+                    ? "border-t-4 border-t-[#337AF7] border-b-0 border-l-0 border-r-0" 
+                    : "border-t border-l-0 border-r border-b-0 hover:bg-gray-50"
+                }`}
+              >
+                <div className={`text-sm font-semibold text-black`}>
+                  {d.month} {d.dayNum}
                 </div>
-              ))}
+                <div className={`text-xs text-[#D7D7D7]`}>
+                  {d.dayName}
+                </div>
+              </div>
+            ))}
             </div>
 
             <div className="w-20 bg-gray-50 border-l flex items-center justify-center">
@@ -304,7 +381,7 @@ export default function WeeklyCalendar({
             <div className="w-20 bg-white border-r">
               {Array.from({ length: hoursCount }).map((_, i) => {
                 const hour = startHour + i;
-                const label = hour <= 11 ? `${hour} AM` : `${hour === 12 ? 12 : hour - 12} PM`;
+                const label = formatHourLabel(hour);
                 return (
                   <div key={i} className="h-14 flex items-center justify-center border-b border-gray-100">
                     <div className="text-xs text-gray-500">{label}</div>
@@ -324,30 +401,21 @@ export default function WeeklyCalendar({
                 ))}
               </div>
 
-              <div className="absolute inset-0 pointer-events-none">
+             <div className="absolute inset-0">
                 {weekData.map((day, dayIdx) => {
-                  const dayEvents = getEventsForDay(day.date);
+                  const dayKey = asDateKey(day.date);
+                  const dayEvents = getEventsForDateKey(dayKey);
+                  
                   return dayEvents.map((ev, idx) => {
                     const topPx = topPxForEvent(ev);
                     const heightPx = heightPxForEvent(ev);
-
                     const leftPercent = colPercent * dayIdx;
                     const widthPercent = colPercent;
 
-                    const displayTime = ev.time ?? (() => {
-                      const sMin = (ev.startHour * 60) + (ev.startMinute ?? 0);
-                      const eMin = (ev.endHour ?? ev.startHour + 1) * 60 + (ev.endMinute ?? 0);
-                      const toHHMM = (m: number) => {
-                        const hh = Math.floor(m / 60);
-                        const mm = m % 60;
-                        const hhStr = String(hh).padStart(2, "0");
-                        const mmStr = String(mm).padStart(2, "0");
-                        return `${hhStr}:${mmStr}`;
-                      };
-                      return `${toHHMM(sMin)} - ${toHHMM(eMin)}`;
-                    })();
+                    const displayTime = getDisplayTime(ev);
+                    const eventStyle = getEventStyle(ev);
 
-                  return (
+                    return (
                       <div
                         key={`${dayIdx}-${idx}`}
                         style={{
@@ -363,55 +431,28 @@ export default function WeeklyCalendar({
                         }}
                       >
                         <div
-                          className="h-full p-2 text-sm border shadow box-border flex flex-col"
-                          onClick={() => openEventModal(ev)}
+                          className={`h-full p-2 text-sm border-t shadow box-border flex flex-col rounded ${
+                            ev.project_color ?? "border-yellow-500 bg-yellow-100"
+                          }`}
                           title={ev.title}
-                          style={{
-                            background: "#FFFBEB",
-                            color: "#92400E",
-                            borderColor: "#FCD34D",
-                            display: "flex",
-                            flexDirection: "column",
-                            overflow: "hidden",
-                            position: "relative", 
-                          }}
+                          style={eventStyle}
                         >
-                      
-                          <div
-                            style={{
-                              position: "absolute",
-                              top: 0,
-                              left: 0,
-                              right: 0,
-                              height: 2,
-                              background: "#F59E0B", 
-                              borderTopLeftRadius: 8,
-                              borderTopRightRadius: 8,
-                            }}
-                            aria-hidden
-                          />
-
-                       
+                          <div style={{ 
+                            position: "absolute", 
+                            top: 0, 
+                            left: 0, 
+                            right: 0, 
+                            height: 2, 
+                            background: ev.project_color || ev.color || "#F59E0B", 
+                            borderTopLeftRadius: 8, 
+                            borderTopRightRadius: 8 
+                          }} />
                           <div style={{ paddingTop: 4 }} />
-
                           <div className="text-xs opacity-80" style={{ fontWeight: 600 }}>
                             {displayTime}
                           </div>
-
-                          <div
-                            className="font-medium flex items-center justify-between gap-2"
-                            style={{
-                              display: "-webkit-box",
-                              WebkitLineClamp: 2,
-                              WebkitBoxOrient: "vertical",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              marginTop: 2,
-                              lineHeight: "1.1rem",
-                            }}
-                          >
-                            <span>{ev.title}</span>
-                          </div>
+                          <div className="font-medium truncate mt-1">{ev.title}</div>
+                        
                         </div>
                       </div>
                     );
@@ -445,7 +486,8 @@ export default function WeeklyCalendar({
                 allDay: false,
                 guest: editingEvent.guest || "",
                 location: editingEvent.location || "",
-                project: editingEvent.project || "",
+                projectName: editingEvent.project || "",
+                projectId: editingEvent.projectId ? Number(editingEvent.projectId) : undefined,
               }
             : null
         }

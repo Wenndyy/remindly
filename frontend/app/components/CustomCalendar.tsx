@@ -1,4 +1,3 @@
-// app/components/WeeklyCalendar.tsx
 "use client";
 
 import React, { useMemo, useState, useEffect } from "react";
@@ -6,7 +5,9 @@ import EventModal, { EventForm } from "./EventModal";
 
 export type EventItem = {
   id?: string;
-  date: string;
+  date: string; 
+  startDate?: string; 
+  endDate?: string; 
   startHour: number;
   startMinute?: number;
   endHour?: number;
@@ -20,12 +21,16 @@ export type EventItem = {
   location?: string;
   project?: string;
   projectId?: string | number | null;
-  // Tambahkan fields untuk database
-  start_time?: string;  // dari database: "HH:MM"
-  end_time?: string;    // dari database: "HH:MM" 
-  all_day?: boolean;    // dari database
-  project_color?: string; // warna dari database
-  color?: string;       // fallback color
+  start_time?: string;  
+  end_time?: string;   
+  all_day?: boolean;  
+  project_color?: string; 
+  color?: string;
+
+  isMultiDay?: boolean;
+  isFirstDay?: boolean;
+  isLastDay?: boolean;
+  originalId?: string;
 };
 
 type WeeklyCalendarProps = {
@@ -34,6 +39,7 @@ type WeeklyCalendarProps = {
   initialEvents?: EventItem[];
   startHour?: number;
   endHour?: number;
+  onEventChange?: () => void;
 };
 
 function BadgeCalendar({ month, day }: { month: string; day: number | string }) {
@@ -81,8 +87,9 @@ export default function CustomCalendar({
   selectedDate,
   onDateSelect,
   initialEvents = [],
-  startHour = 9,
-  endHour = 20,
+  startHour = 1,
+  endHour = 24,
+  onEventChange,
 }: WeeklyCalendarProps) {
   const [viewMode, setViewMode] = useState<"month" | "week" | "day">("month");
   const [weekOffset, setWeekOffset] = useState(0);
@@ -90,10 +97,12 @@ export default function CustomCalendar({
   const [modalOpen, setModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EventItem | null>(null);
   const [internalSelected, setInternalSelected] = useState<Date>(selectedDate ?? new Date());
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [pickerYear, setPickerYear] = useState(internalSelected.getFullYear());
 
-  // Debug initial events
+
+
   useEffect(() => {
-    console.log('Initial events received:', initialEvents);
     setEvents(initialEvents);
   }, [initialEvents]);
 
@@ -103,21 +112,22 @@ export default function CustomCalendar({
 
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const monthNamesFull = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
 
   const hoursCount = endHour - startHour + 1;
   const hourRowHeight = 56;
 
-  // --- helpers
+
   const asDateKey = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
   const getEventsForDateKey = (key: string) => {
     const filteredEvents = events.filter((e) => e.date === key);
-    console.log(`Events for ${key}:`, filteredEvents);
+
     return filteredEvents;
   };
 
-  // --- week data (used by week view)
   const weekData = useMemo(() => {
     const base = new Date(internalSelected);
     base.setHours(0, 0, 0, 0);
@@ -156,7 +166,7 @@ export default function CustomCalendar({
     };
   }, [weekData]);
 
-  // --- month grid (used by month view)
+
   const monthGrid = useMemo(() => {
     const d = new Date(internalSelected);
     d.setDate(1);
@@ -166,19 +176,18 @@ export default function CustomCalendar({
     const prevMonthDays = new Date(d.getFullYear(), d.getMonth(), 0).getDate();
 
     const cells: { date: Date; inCurrentMonth: boolean }[] = [];
-    // add previous month's tail
     for (let i = firstDayIdx - 1; i >= 0; i--) {
       const dt = new Date(d.getFullYear(), d.getMonth() - 1, prevMonthDays - i);
       dt.setHours(0, 0, 0, 0);
       cells.push({ date: dt, inCurrentMonth: false });
     }
-    // current month
+
     for (let i = 1; i <= daysInMonth; i++) {
       const dt = new Date(d.getFullYear(), d.getMonth(), i);
       dt.setHours(0, 0, 0, 0);
       cells.push({ date: dt, inCurrentMonth: true });
     }
-    // next month to fill 42 cells
+
     let nextDay = 1;
     while (cells.length < 42) {
       const dt = new Date(d.getFullYear(), d.getMonth() + 1, nextDay++);
@@ -186,7 +195,7 @@ export default function CustomCalendar({
       cells.push({ date: dt, inCurrentMonth: false });
     }
 
-    // group into 6 rows
+
     const rows: { date: Date; inCurrentMonth: boolean; key: string }[][] = [];
     for (let r = 0; r < 6; r++) {
       const row = cells.slice(r * 7, r * 7 + 7).map((c) => ({ ...c, key: asDateKey(c.date) }));
@@ -195,49 +204,45 @@ export default function CustomCalendar({
     return rows;
   }, [internalSelected]);
 
-  // --- day view: single date column computed from internalSelected
+
   const dayDate = useMemo(() => {
     const d = new Date(internalSelected);
     d.setHours(0, 0, 0, 0);
-    console.log('Day view date:', d);
     return d;
   }, [internalSelected]);
 
-  // Event minute helpers - FIXED VERSION
+
   const eventStartMinutes = (ev: EventItem) => {
-    // Priority 1: Use start_time from database if available
     if (ev.start_time && ev.start_time.includes(':')) {
       const [hours, minutes] = ev.start_time.split(':').map(Number);
       return hours * 60 + minutes;
     }
     
-    // Priority 2: Use time field if available (take first part if it's a range)
+ 
     if (ev.time && ev.time.includes(':')) {
-      const timePart = ev.time.split(' - ')[0]; // Take only start time if range
+      const timePart = ev.time.split(' - ')[0]; 
       const [hours, minutes] = timePart.split(':').map(Number);
       return hours * 60 + minutes;
     }
     
-    // Priority 3: Fallback to startHour/startMinute
+ 
     const m = ev.startMinute ?? 0;
     return Math.round(ev.startHour * 60 + m);
   };
 
   const eventEndMinutes = (ev: EventItem) => {
-    // Priority 1: Use end_time from database if available
+
     if (ev.end_time && ev.end_time.includes(':')) {
       const [hours, minutes] = ev.end_time.split(':').map(Number);
       return hours * 60 + minutes;
     }
-    
-    // Priority 2: Use time field if available (take end part if it's a range)
+ 
     if (ev.time && ev.time.includes(' - ')) {
-      const timePart = ev.time.split(' - ')[1]; // Take end time from range
+      const timePart = ev.time.split(' - ')[1]; 
       const [hours, minutes] = timePart.split(':').map(Number);
       return hours * 60 + minutes;
     }
     
-    // Priority 3: Fallback calculations
     if (typeof ev.endHour === "number") {
       const em = (ev.endMinute ?? 0) + ev.endHour * 60;
       return Math.round(em);
@@ -268,7 +273,7 @@ export default function CustomCalendar({
     return Math.max(24, minutesToPx(dur));
   };
 
-  // controls
+ 
   const colPercent = 100 / 7;
   const centerGridHeight = hoursCount * hourRowHeight;
   
@@ -300,16 +305,15 @@ export default function CustomCalendar({
     }
   };
 
-  // react to prop selectedDate changes
+
   useEffect(() => {
     if (!selectedDate) return;
     setInternalSelected(selectedDate);
   }, [selectedDate]);
 
-  // badge date uses weekData
+
   const badgeDate = weekData.find((d) => d.isToday) ?? weekData[0] ?? { month: "", dayNum: 0 };
 
-  // modal handlers
   const openEventModal = (ev?: EventItem | null) => {
     setEditingEvent(ev ?? null);
     setModalOpen(true);
@@ -352,10 +356,13 @@ export default function CustomCalendar({
       }
       return [...prev, newItem];
     });
+    if (onEventChange) {
+      onEventChange();
+    }
     closeModal();
   };
 
-  // Helper function untuk color contrast
+
   const getContrastColor = (hexColor: string): string => {
     if (!hexColor || hexColor.length < 7) return '#000000';
     
@@ -371,83 +378,9 @@ export default function CustomCalendar({
     }
   };
 
-  // --- rendering helpers for month cells
-  const renderMonthCell = (cellDate: Date, inCurrentMonth: boolean) => {
-    const key = asDateKey(cellDate);
-    const dayEvents = getEventsForDateKey(key);
-    const isToday = (() => {
-      const t = new Date();
-      t.setHours(0, 0, 0, 0);
-      return cellDate.toDateString() === t.toDateString();
-    })();
-    
-    return (
-      <div
-        key={key}
-        className={`
-          border border-gray-200 p-2 min-h-[120px] flex flex-col justify-start gap-1.5 cursor-pointer 
-          transition-colors hover:bg-gray-50 relative
-          ${inCurrentMonth ? "bg-white" : "bg-gray-50/50"}
-        `}
-        onClick={() => {
-          setInternalSelected(new Date(cellDate));
-          onDateSelect?.(new Date(cellDate));
-        }}
-      >
-        {/* Date number */}
-        <div className="flex items-center justify-between mb-1">
-          {isToday ? (
-            <div
-              className="w-7 h-7 rounded-full flex items-center justify-center text-white text-sm font-semibold"
-              style={{ backgroundColor: "#337AF7" }}
-            >
-              {cellDate.getDate()}
-            </div>
-          ) : (
-            <div className={`text-sm font-medium ${inCurrentMonth ? "text-gray-900" : "text-gray-400"}`}>
-              {cellDate.getDate()}
-            </div>
-          )}
-        </div>
 
-        {/* Events */}
-        <div className="flex-1 overflow-hidden space-y-1">
-          {dayEvents.slice(0, 3).map((ev) => {
-            const eventColor = ev.project_color || ev.color || "#F59E0B";
-            const eventBgColor = ev.project_color ? `${ev.project_color}20` : "#FFFBEB";
-            const eventTextColor = getContrastColor(eventColor);
-            
-            return (
-              <div
-                key={ev.id ?? ev.title + ev.date}
-                className="px-2 py-1 rounded text-xs font-medium truncate border-l-2 ${ev.project_color}"
-                style={{ 
-                  background: eventBgColor, 
-                  color: eventTextColor, 
-                  borderLeftColor: eventColor,
-                  cursor: "pointer" 
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openEventModal(ev);
-                }}
-                title={ev.title}
-              >
-                {ev.time ? `${ev.time} ` : ""}{ev.title}
-              </div>
-            );
-          })}
-          {dayEvents.length > 3 && (
-            <div className="text-xs text-gray-500 font-medium pl-1">
-              +{dayEvents.length - 3} more
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
 
-  // --- day view column - FIXED VERSION
+
   const renderDayColumn = (date: Date) => {
     const key = asDateKey(date);
     const dayEvents = getEventsForDateKey(key);
@@ -455,25 +388,19 @@ export default function CustomCalendar({
     
     return (
       <div className="relative overflow-hidden" style={{ minHeight: `${centerGridHeight}px` }}>
-        {/* Grid lines */}
         <div className="absolute inset-0">
           {Array.from({ length: hoursCount }).map((_, rowIdx) => (
             <div key={rowIdx} className="h-14 border-b border-dashed border-gray-100" />
           ))}
         </div>
 
-        {/* Events */}
         <div className="absolute inset-0">
           {dayEvents.map((ev, idx) => {
             const topPx = topPxForEvent(ev);
             const heightPx = heightPxForEvent(ev);
-            
-         
-            // Ambil warna dari database atau gunakan default
             const eventColor = ev.project_color || ev.color || "#F59E0B";
-            const eventBgColor = ev.project_color ? `${ev.project_color}20` : "#FFFBEB";
-            const eventTextColor = getContrastColor(eventColor);
-            
+            const eventBgColor = ev.project_color ? `${ev.project_color}70` : "#FFFBEB";
+            const eventTextColor = getContrastColor(eventColor);     
             const displayTime = ev.start_time && ev.end_time 
               ? `${ev.start_time} - ${ev.end_time}`
               : ev.time ?? `${String(ev.startHour).padStart(2, "0")}:${String(ev.startMinute ?? 0).padStart(2, "0")} - ${String(ev.endHour ?? ev.startHour + 1).padStart(2, "0")}:${String(ev.endMinute ?? 0).padStart(2, "0")}`;
@@ -492,8 +419,8 @@ export default function CustomCalendar({
                 }}
               >
                 <div
-                  className={`h-full p-2 text-sm border shadow box-border flex flex-col rounded   ${ev.project_color ?? "border-yellow-500 bg-yellow-100"}`}
-                  onClick={() => openEventModal(ev)}
+                  className={`h-full p-2 text-sm border-t shadow box-border flex flex-col rounded  ${ev.project_color ?? "border-yellow-500 bg-yellow-100"}`}
+                
                   title={ev.title}
                   style={{
                     background: eventBgColor,
@@ -520,11 +447,7 @@ export default function CustomCalendar({
                     {displayTime}
                   </div>
                   <div className="font-medium truncate mt-1">{ev.title}</div>
-                  {ev.project && (
-                    <div className="text-xs opacity-70 mt-1 truncate">
-                      {ev.project}
-                    </div>
-                  )}
+                 
                 </div>
               </div>
             );
@@ -534,7 +457,6 @@ export default function CustomCalendar({
     );
   };
 
-  // header dropdown label
   const headerLabel = useMemo(() => {
     if (viewMode === "month") {
       const d = new Date(internalSelected);
@@ -543,26 +465,12 @@ export default function CustomCalendar({
     if (viewMode === "week") {
       return `${weekRange.startStr} - ${weekRange.endStr}`;
     }
-    // day
     const d = new Date(internalSelected);
     return `${monthNames[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
   }, [viewMode, internalSelected, weekRange]);
 
 
-  useEffect(() => {
-    ;
-    if (viewMode === 'week') {
-      console.log('Week view events per day:');
-      weekData.forEach(day => {
-        const dayEvents = getEventsForDateKey(asDateKey(day.date));
-        console.log(`- ${day.date}: ${dayEvents.length} events`);
-      });
-    }
-    if (viewMode === 'day') {
-      const dayEvents = getEventsForDateKey(asDateKey(dayDate));
-      console.log(`Day view events: ${dayEvents.length}`);
-    }
-  }, [viewMode, events, weekData, dayDate]);
+ 
 
   // --- render main UI
   return (
@@ -571,18 +479,6 @@ export default function CustomCalendar({
       <div className="flex items-center justify-between px-5 py-4 border-b">
         <div className="flex items-center gap-4">
           <BadgeCalendar month={badgeDate.month} day={badgeDate.dayNum} />
-          <div>
-            <div className="text-lg font-semibold text-gray-900">
-              {headerLabel}
-            </div>
-            {/* Debug info */}
-            <div className="text-xs text-gray-500">
-              {events.length} events loaded
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
           {/* Navigation buttons */}
           <div className="flex items-center gap-2 mr-2">
             <button onClick={goPrev} className="p-2 rounded hover:bg-gray-100 transition-colors">
@@ -596,6 +492,69 @@ export default function CustomCalendar({
               </svg>
             </button>
           </div>
+          <div>
+          <div className="flex items-center gap-1 relative">
+            <div className="text-lg font-semibold text-gray-900">
+              {headerLabel}
+            </div>
+
+       
+            <button
+              onClick={() => setShowMonthPicker((v) => !v)}
+              className="p-1 rounded hover:bg-gray-100"
+            >
+              <svg className="w-4 h-4 text-black" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </button>
+
+            {showMonthPicker && (
+              <div className="absolute top-8 left-0 bg-white border rounded shadow-lg p-3 z-50 w-48">
+
+                {/* Pilih tahun */}
+                <div className="mb-2">
+                  <select
+                    className="w-full border rounded px-2 py-1 text-black"
+                    value={pickerYear}
+                    onChange={(e) => setPickerYear(parseInt(e.target.value))}
+                  >
+                    {Array.from({ length: 15 }).map((_, i) => {
+                      const yr = 2018 + i;
+                      return (
+                        <option key={yr} value={yr}>{yr}</option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                {/* List bulan */}
+                <div className="grid grid-cols-3 gap-2">
+                  {monthNamesFull.map((m, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        const d = new Date(internalSelected);
+                        d.setFullYear(pickerYear);
+                        d.setMonth(idx);
+                        setInternalSelected(d);
+                        setShowMonthPicker(false);
+                      }}
+                      className="text-xs p-2 border rounded hover:bg-gray-100 text-black"
+                    >
+                      {m.slice(0, 3)}
+                    </button>
+                  ))}
+                </div>
+
+              </div>
+            )}
+          </div>
+
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          
 
           {/* View mode dropdown */}
           <div className="relative">
@@ -685,15 +644,13 @@ export default function CustomCalendar({
                     <div className="flex-1 overflow-hidden space-y-1">
                       {dayEvents.slice(0, 3).map((ev) => {
                         const eventColor = ev.project_color || ev.color || "#F59E0B";
-                        const eventBgColor = ev.project_color ? `${ev.project_color}20` : "#FFFBEB";
+                        const eventBgColor = ev.project_color ? `${ev.project_color}70` : "#FFFBEB";
                         const eventTextColor = getContrastColor(eventColor);
                         
                         return (
                           <div
                             key={ev.id ?? ev.title + ev.date}
-                            className={`px-2 py-1 rounded text-xs font-medium truncate border-l-2
-  ${ev.project_color ?? "border-yellow-500 bg-yellow-100"}
-`}
+                            className={`px-2 py-1 rounded text-xs font-medium truncate border-t-2 ${ev.project_color ?? "border-yellow-500 bg-yellow-100"}`}
 
                             style={{ 
                               background: eventBgColor, 
@@ -701,10 +658,7 @@ export default function CustomCalendar({
                               borderLeftColor: eventColor,
                               cursor: "pointer" 
                             }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openEventModal(ev);
-                            }}
+                           
                             title={ev.title}
                           >
                             {ev.time ? `${ev.time} ` : ""}{ev.title}
@@ -796,10 +750,9 @@ export default function CustomCalendar({
                         const heightPx = heightPxForEvent(ev);
                         const leftPercent = colPercent * dayIdx;
                         const widthPercent = colPercent;
-                        
-                        // Ambil warna dari database atau gunakan default
+                  
                         const eventColor = ev.project_color || ev.color || "#F59E0B";
-                        const eventBgColor = ev.project_color ? `${ev.project_color}20` : "#FFFBEB";
+                        const eventBgColor = ev.project_color ? `${ev.project_color}70` : "#FFFBEB";
                         const eventTextColor = getContrastColor(eventColor);
                         
                         const displayTime = ev.start_time && ev.end_time 
@@ -822,8 +775,8 @@ export default function CustomCalendar({
                             }}
                           >
                             <div
-                             className={`h-full p-2 text-sm border shadow box-border flex flex-col rounded ${ev.project_color ?? "border-yellow-500 bg-yellow-100"}`}
-                              onClick={() => openEventModal(ev)}
+                             className={`h-full p-2 text-sm border-t shadow box-border flex flex-col rounded ${ev.project_color ?? "border-yellow-500 bg-yellow-100"}`}
+                            
                               title={ev.title}
                               style={{
                                 background: eventBgColor,
@@ -850,11 +803,7 @@ export default function CustomCalendar({
                                 {displayTime}
                               </div>
                               <div className="font-medium truncate mt-1">{ev.title}</div>
-                              {ev.project && (
-                                <div className="text-xs opacity-70 mt-1 truncate">
-                                  {ev.project}
-                                </div>
-                              )}
+                            
                             </div>
                           </div>
                         );

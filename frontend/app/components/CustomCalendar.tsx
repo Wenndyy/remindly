@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import EventModal, { EventForm } from "./EventModal";
 
 export type EventItem = {
   id?: string;
-  date: string; 
-  startDate?: string; 
-  endDate?: string; 
+  date: string;
+  startDate?: string;
+  endDate?: string;
   startHour: number;
   startMinute?: number;
   endHour?: number;
@@ -21,10 +21,10 @@ export type EventItem = {
   location?: string;
   project?: string;
   projectId?: string | number | null;
-  start_time?: string;  
-  end_time?: string;   
-  all_day?: boolean;  
-  project_color?: string; 
+  start_time?: string;
+  end_time?: string;
+  all_day?: boolean;
+  project_color?: string;
   color?: string;
 
   isMultiDay?: boolean;
@@ -93,26 +93,49 @@ export default function CustomCalendar({
 }: WeeklyCalendarProps) {
   const [viewMode, setViewMode] = useState<"month" | "week" | "day">("month");
   const [weekOffset, setWeekOffset] = useState(0);
-  const [events, setEvents] = useState<EventItem[]>(initialEvents);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EventItem | null>(null);
-  const [internalSelected, setInternalSelected] = useState<Date>(selectedDate ?? new Date());
+  const [internalSelected, setInternalSelected] = useState<Date>(() => selectedDate ?? new Date());
   const [showMonthPicker, setShowMonthPicker] = useState(false);
-  const [pickerYear, setPickerYear] = useState(internalSelected.getFullYear());
+  const [pickerYear, setPickerYear] = useState(() => (selectedDate ?? new Date()).getFullYear());
 
+  // Stabilize events reference to prevent infinite re-renders
+  // Use content-based key instead of reference comparison
+  const eventsRef = useRef<EventItem[]>(initialEvents);
+  const prevEventsKeyRef = useRef<string>("");
 
-
-  useEffect(() => {
-    setEvents(initialEvents);
+  // Create stable key from event data
+  const eventsKey = useMemo(() => {
+    return JSON.stringify(initialEvents.map(e => ({
+      id: e.id || e.originalId,
+      title: e.title,
+      date: e.date,
+      startDate: e.startDate,
+      endDate: e.endDate
+    })));
   }, [initialEvents]);
 
+  // Only update events when actual content changes
+  if (eventsKey !== prevEventsKeyRef.current) {
+    eventsRef.current = initialEvents;
+    prevEventsKeyRef.current = eventsKey;
+  }
+
+  // Use stable reference instead of state
+  const events = eventsRef.current;
+
+  // Sync selectedDate only when it actually changes
+  const prevSelectedDateRef = useRef<Date | null>(selectedDate ?? null);
   useEffect(() => {
-    if (selectedDate) setInternalSelected(selectedDate);
+    if (selectedDate && selectedDate.getTime() !== prevSelectedDateRef.current?.getTime()) {
+      setInternalSelected(selectedDate);
+      prevSelectedDateRef.current = selectedDate;
+    }
   }, [selectedDate]);
 
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const monthNamesFull = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const monthNamesFull = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 
   const hoursCount = endHour - startHour + 1;
@@ -152,7 +175,6 @@ export default function CustomCalendar({
         })(),
       });
     }
-    console.log('Week data generated:', days);
     return days;
   }, [internalSelected, weekOffset]);
 
@@ -217,15 +239,15 @@ export default function CustomCalendar({
       const [hours, minutes] = ev.start_time.split(':').map(Number);
       return hours * 60 + minutes;
     }
-    
- 
+
+
     if (ev.time && ev.time.includes(':')) {
-      const timePart = ev.time.split(' - ')[0]; 
+      const timePart = ev.time.split(' - ')[0];
       const [hours, minutes] = timePart.split(':').map(Number);
       return hours * 60 + minutes;
     }
-    
- 
+
+
     const m = ev.startMinute ?? 0;
     return Math.round(ev.startHour * 60 + m);
   };
@@ -236,13 +258,13 @@ export default function CustomCalendar({
       const [hours, minutes] = ev.end_time.split(':').map(Number);
       return hours * 60 + minutes;
     }
- 
+
     if (ev.time && ev.time.includes(' - ')) {
-      const timePart = ev.time.split(' - ')[1]; 
+      const timePart = ev.time.split(' - ')[1];
       const [hours, minutes] = timePart.split(':').map(Number);
       return hours * 60 + minutes;
     }
-    
+
     if (typeof ev.endHour === "number") {
       const em = (ev.endMinute ?? 0) + ev.endHour * 60;
       return Math.round(em);
@@ -253,13 +275,13 @@ export default function CustomCalendar({
     if (typeof ev.durationHours === "number") {
       return Math.round(eventStartMinutes(ev) + ev.durationHours * 60);
     }
-    
+
     return Math.round(eventStartMinutes(ev) + 60);
   };
 
   const startOfCalendarMinutes = startHour * 60;
   const minutesToPx = (mins: number) => (mins / 60) * hourRowHeight;
-  
+
   const topPxForEvent = (ev: EventItem) => {
     const sMin = eventStartMinutes(ev);
     const relMin = Math.max(sMin, startOfCalendarMinutes) - startOfCalendarMinutes;
@@ -273,10 +295,10 @@ export default function CustomCalendar({
     return Math.max(24, minutesToPx(dur));
   };
 
- 
+
   const colPercent = 100 / 7;
   const centerGridHeight = hoursCount * hourRowHeight;
-  
+
   const goPrev = () => {
     if (viewMode === "week") setWeekOffset((v) => v - 1);
     if (viewMode === "month") {
@@ -290,7 +312,7 @@ export default function CustomCalendar({
       setInternalSelected(d);
     }
   };
-  
+
   const goNext = () => {
     if (viewMode === "week") setWeekOffset((v) => v + 1);
     if (viewMode === "month") {
@@ -306,19 +328,13 @@ export default function CustomCalendar({
   };
 
 
-  useEffect(() => {
-    if (!selectedDate) return;
-    setInternalSelected(selectedDate);
-  }, [selectedDate]);
-
-
   const badgeDate = weekData.find((d) => d.isToday) ?? weekData[0] ?? { month: "", dayNum: 0 };
 
   const openEventModal = (ev?: EventItem | null) => {
     setEditingEvent(ev ?? null);
     setModalOpen(true);
   };
-  
+
   const closeModal = () => {
     setModalOpen(false);
     setEditingEvent(null);
@@ -329,7 +345,7 @@ export default function CustomCalendar({
     const startParts = form.startTime ? form.startTime.split(":").map((s) => parseInt(s, 10)) : [startHour, 0];
     const endParts = form.endTime ? form.endTime.split(":").map((s) => parseInt(s, 10)) : [startParts[0] + 1, startParts[1]];
     const dateKey = asDateKey(internalSelected);
-    
+
     return {
       id,
       date: dateKey,
@@ -349,13 +365,14 @@ export default function CustomCalendar({
 
   const handleSaveFromModal = (data: EventForm) => {
     const newItem = eventFormToItem(data, editingEvent ?? null);
-    setEvents((prev) => {
-      const found = prev.find((p) => p.id === newItem.id);
-      if (found) {
-        return prev.map((p) => (p.id === newItem.id ? newItem : p));
-      }
-      return [...prev, newItem];
-    });
+    // Update eventsRef directly instead of using setState to avoid re-render loops
+    const found = eventsRef.current.find((p: EventItem) => p.id === newItem.id);
+    if (found) {
+      eventsRef.current = eventsRef.current.map((p: EventItem) => (p.id === newItem.id ? newItem : p));
+    } else {
+      eventsRef.current = [...eventsRef.current, newItem];
+    }
+    // Trigger parent refresh to sync changes
     if (onEventChange) {
       onEventChange();
     }
@@ -365,12 +382,12 @@ export default function CustomCalendar({
 
   const getContrastColor = (hexColor: string): string => {
     if (!hexColor || hexColor.length < 7) return '#000000';
-    
+
     try {
       const r = parseInt(hexColor.slice(1, 3), 16);
       const g = parseInt(hexColor.slice(3, 5), 16);
       const b = parseInt(hexColor.slice(5, 7), 16);
-      
+
       const brightness = (r * 299 + g * 587 + b * 114) / 1000;
       return brightness > 128 ? '#000000' : '#FFFFFF';
     } catch {
@@ -384,8 +401,8 @@ export default function CustomCalendar({
   const renderDayColumn = (date: Date) => {
     const key = asDateKey(date);
     const dayEvents = getEventsForDateKey(key);
-   
-    
+
+
     return (
       <div className="relative overflow-hidden" style={{ minHeight: `${centerGridHeight}px` }}>
         <div className="absolute inset-0">
@@ -400,8 +417,8 @@ export default function CustomCalendar({
             const heightPx = heightPxForEvent(ev);
             const eventColor = ev.project_color || ev.color || "#F59E0B";
             const eventBgColor = ev.project_color ? `${ev.project_color}70` : "#FFFBEB";
-            const eventTextColor = getContrastColor(eventColor);     
-            const displayTime = ev.start_time && ev.end_time 
+            const eventTextColor = getContrastColor(eventColor);
+            const displayTime = ev.start_time && ev.end_time
               ? `${ev.start_time} - ${ev.end_time}`
               : ev.time ?? `${String(ev.startHour).padStart(2, "0")}:${String(ev.startMinute ?? 0).padStart(2, "0")} - ${String(ev.endHour ?? ev.startHour + 1).padStart(2, "0")}:${String(ev.endMinute ?? 0).padStart(2, "0")}`;
 
@@ -420,7 +437,7 @@ export default function CustomCalendar({
               >
                 <div
                   className={`h-full p-2 text-sm border-t shadow box-border flex flex-col rounded  ${ev.project_color ?? "border-yellow-500 bg-yellow-100"}`}
-                
+
                   title={ev.title}
                   style={{
                     background: eventBgColor,
@@ -432,22 +449,22 @@ export default function CustomCalendar({
                     position: "relative",
                   }}
                 >
-                  <div style={{ 
-                    position: "absolute", 
-                    top: 0, 
-                    left: 0, 
-                    right: 0, 
-                    height: 2, 
-                    background: eventColor, 
-                    borderTopLeftRadius: 8, 
-                    borderTopRightRadius: 8 
+                  <div style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: 2,
+                    background: eventColor,
+                    borderTopLeftRadius: 8,
+                    borderTopRightRadius: 8
                   }} />
                   <div style={{ paddingTop: 4 }} />
                   <div className="text-xs opacity-80" style={{ fontWeight: 600 }}>
                     {displayTime}
                   </div>
                   <div className="font-medium truncate mt-1">{ev.title}</div>
-                 
+
                 </div>
               </div>
             );
@@ -470,7 +487,7 @@ export default function CustomCalendar({
   }, [viewMode, internalSelected, weekRange]);
 
 
- 
+
 
   // --- render main UI
   return (
@@ -493,68 +510,68 @@ export default function CustomCalendar({
             </button>
           </div>
           <div>
-          <div className="flex items-center gap-1 relative">
-            <div className="text-lg font-semibold text-gray-900">
-              {headerLabel}
-            </div>
-
-       
-            <button
-              onClick={() => setShowMonthPicker((v) => !v)}
-              className="p-1 rounded hover:bg-gray-100"
-            >
-              <svg className="w-4 h-4 text-black" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/>
-              </svg>
-            </button>
-
-            {showMonthPicker && (
-              <div className="absolute top-8 left-0 bg-white border rounded shadow-lg p-3 z-50 w-48">
-
-                {/* Pilih tahun */}
-                <div className="mb-2">
-                  <select
-                    className="w-full border rounded px-2 py-1 text-black"
-                    value={pickerYear}
-                    onChange={(e) => setPickerYear(parseInt(e.target.value))}
-                  >
-                    {Array.from({ length: 15 }).map((_, i) => {
-                      const yr = 2018 + i;
-                      return (
-                        <option key={yr} value={yr}>{yr}</option>
-                      );
-                    })}
-                  </select>
-                </div>
-
-                {/* List bulan */}
-                <div className="grid grid-cols-3 gap-2">
-                  {monthNamesFull.map((m, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => {
-                        const d = new Date(internalSelected);
-                        d.setFullYear(pickerYear);
-                        d.setMonth(idx);
-                        setInternalSelected(d);
-                        setShowMonthPicker(false);
-                      }}
-                      className="text-xs p-2 border rounded hover:bg-gray-100 text-black"
-                    >
-                      {m.slice(0, 3)}
-                    </button>
-                  ))}
-                </div>
-
+            <div className="flex items-center gap-1 relative">
+              <div className="text-lg font-semibold text-gray-900">
+                {headerLabel}
               </div>
-            )}
-          </div>
+
+
+              <button
+                onClick={() => setShowMonthPicker((v) => !v)}
+                className="p-1 rounded hover:bg-gray-100"
+              >
+                <svg className="w-4 h-4 text-black" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {showMonthPicker && (
+                <div className="absolute top-8 left-0 bg-white border rounded shadow-lg p-3 z-50 w-48">
+
+                  {/* Pilih tahun */}
+                  <div className="mb-2">
+                    <select
+                      className="w-full border rounded px-2 py-1 text-black"
+                      value={pickerYear}
+                      onChange={(e) => setPickerYear(parseInt(e.target.value))}
+                    >
+                      {Array.from({ length: 15 }).map((_, i) => {
+                        const yr = 2018 + i;
+                        return (
+                          <option key={yr} value={yr}>{yr}</option>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  {/* List bulan */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {monthNamesFull.map((m, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          const d = new Date(internalSelected);
+                          d.setFullYear(pickerYear);
+                          d.setMonth(idx);
+                          setInternalSelected(d);
+                          setShowMonthPicker(false);
+                        }}
+                        className="text-xs p-2 border rounded hover:bg-gray-100 text-black"
+                      >
+                        {m.slice(0, 3)}
+                      </button>
+                    ))}
+                  </div>
+
+                </div>
+              )}
+            </div>
 
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          
+
 
           {/* View mode dropdown */}
           <div className="relative">
@@ -607,9 +624,9 @@ export default function CustomCalendar({
                   t.setHours(0, 0, 0, 0);
                   return cell.date.toDateString() === t.toDateString();
                 })();
-                
+
                 const dayEvents = getEventsForDateKey(cell.key);
-                
+
                 return (
                   <div
                     key={cell.key}
@@ -646,19 +663,19 @@ export default function CustomCalendar({
                         const eventColor = ev.project_color || ev.color || "#F59E0B";
                         const eventBgColor = ev.project_color ? `${ev.project_color}70` : "#FFFBEB";
                         const eventTextColor = getContrastColor(eventColor);
-                        
+
                         return (
                           <div
                             key={ev.id ?? ev.title + ev.date}
                             className={`px-2 py-1 rounded text-xs font-medium truncate border-t-2 ${ev.project_color ?? "border-yellow-500 bg-yellow-100"}`}
 
-                            style={{ 
-                              background: eventBgColor, 
-                              color: eventTextColor, 
+                            style={{
+                              background: eventBgColor,
+                              color: eventTextColor,
                               borderLeftColor: eventColor,
-                              cursor: "pointer" 
+                              cursor: "pointer"
                             }}
-                           
+
                             title={ev.title}
                           >
                             {ev.time ? `${ev.time} ` : ""}{ev.title}
@@ -695,9 +712,8 @@ export default function CustomCalendar({
                         setInternalSelected(d.date);
                         onDateSelect?.(d.date);
                       }}
-                      className={`py-3 text-center border-r last:border-r-0 cursor-pointer transition-colors ${
-                        d.isToday ? "bg-blue-50 border-t-2 border-t-blue-500" : "hover:bg-gray-50"
-                      }`}
+                      className={`py-3 text-center border-r last:border-r-0 cursor-pointer transition-colors ${d.isToday ? "bg-blue-50 border-t-2 border-t-blue-500" : "hover:bg-gray-50"
+                        }`}
                     >
                       <div className={`text-sm font-semibold ${d.isToday ? "text-blue-600" : "text-gray-700"}`}>
                         {d.month} {d.dayNum}
@@ -744,18 +760,18 @@ export default function CustomCalendar({
                     {weekData.map((day, dayIdx) => {
                       const dayKey = asDateKey(day.date);
                       const dayEvents = getEventsForDateKey(dayKey);
-                      
+
                       return dayEvents.map((ev, idx) => {
                         const topPx = topPxForEvent(ev);
                         const heightPx = heightPxForEvent(ev);
                         const leftPercent = colPercent * dayIdx;
                         const widthPercent = colPercent;
-                  
+
                         const eventColor = ev.project_color || ev.color || "#F59E0B";
                         const eventBgColor = ev.project_color ? `${ev.project_color}70` : "#FFFBEB";
                         const eventTextColor = getContrastColor(eventColor);
-                        
-                        const displayTime = ev.start_time && ev.end_time 
+
+                        const displayTime = ev.start_time && ev.end_time
                           ? `${ev.start_time} - ${ev.end_time}`
                           : ev.time ?? `${String(ev.startHour).padStart(2, "0")}:${String(ev.startMinute ?? 0).padStart(2, "0")} - ${String(ev.endHour ?? ev.startHour + 1).padStart(2, "0")}:${String(ev.endMinute ?? 0).padStart(2, "0")}`;
 
@@ -775,8 +791,8 @@ export default function CustomCalendar({
                             }}
                           >
                             <div
-                             className={`h-full p-2 text-sm border-t shadow box-border flex flex-col rounded ${ev.project_color ?? "border-yellow-500 bg-yellow-100"}`}
-                            
+                              className={`h-full p-2 text-sm border-t shadow box-border flex flex-col rounded ${ev.project_color ?? "border-yellow-500 bg-yellow-100"}`}
+
                               title={ev.title}
                               style={{
                                 background: eventBgColor,
@@ -788,22 +804,22 @@ export default function CustomCalendar({
                                 position: "relative",
                               }}
                             >
-                              <div style={{ 
-                                position: "absolute", 
-                                top: 0, 
-                                left: 0, 
-                                right: 0, 
-                                height: 2, 
-                                background: eventColor, 
-                                borderTopLeftRadius: 8, 
-                                borderTopRightRadius: 8 
+                              <div style={{
+                                position: "absolute",
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                height: 2,
+                                background: eventColor,
+                                borderTopLeftRadius: 8,
+                                borderTopRightRadius: 8
                               }} />
                               <div style={{ paddingTop: 4 }} />
                               <div className="text-xs opacity-80" style={{ fontWeight: 600 }}>
                                 {displayTime}
                               </div>
                               <div className="font-medium truncate mt-1">{ev.title}</div>
-                            
+
                             </div>
                           </div>
                         );
@@ -887,19 +903,19 @@ export default function CustomCalendar({
         initial={
           editingEvent
             ? {
-                title: editingEvent.title,
-                description: editingEvent.description || "",
-                startTime: `${String(editingEvent.startHour).padStart(2, "0")}:${String(editingEvent.startMinute ?? 0).padStart(2, "0")}`,
-                endTime:
-                  typeof editingEvent.endHour === "number"
-                    ? `${String(editingEvent.endHour).padStart(2, "0")}:${String(editingEvent.endMinute ?? 0).padStart(2, "0")}`
-                    : "",
-                allDay: false,
-                guest: editingEvent.guest || "",
-                location: editingEvent.location || "",
-                projectName: editingEvent.project || "",
-                projectId: editingEvent.projectId ? Number(editingEvent.projectId) : undefined,
-              }
+              title: editingEvent.title,
+              description: editingEvent.description || "",
+              startTime: `${String(editingEvent.startHour).padStart(2, "0")}:${String(editingEvent.startMinute ?? 0).padStart(2, "0")}`,
+              endTime:
+                typeof editingEvent.endHour === "number"
+                  ? `${String(editingEvent.endHour).padStart(2, "0")}:${String(editingEvent.endMinute ?? 0).padStart(2, "0")}`
+                  : "",
+              allDay: false,
+              guest: editingEvent.guest || "",
+              location: editingEvent.location || "",
+              projectName: editingEvent.project || "",
+              projectId: editingEvent.projectId ? Number(editingEvent.projectId) : undefined,
+            }
             : null
         }
         onClose={closeModal}

@@ -6,8 +6,8 @@ import EventModal, { EventForm } from "./EventModal";
 export type EventItem = {
   id?: string;
   date: string;
-  startDate?: string; 
-  endDate?: string; 
+  startDate?: string;
+  endDate?: string;
   startHour: number;
   startMinute?: number;
   endHour?: number;
@@ -21,11 +21,11 @@ export type EventItem = {
   location?: string;
   project?: string;
   projectId?: string | number | null;
-  start_time?: string;  
-  end_time?: string;   
-  all_day?: boolean;  
-  project_color?: string; 
-  color?: string;      
+  start_time?: string;
+  end_time?: string;
+  all_day?: boolean;
+  project_color?: string;
+  color?: string;
   isMultiDay?: boolean;
   isFirstDay?: boolean;
   isLastDay?: boolean;
@@ -93,7 +93,16 @@ export default function WeeklyCalendar({
   const [weekOffset, setWeekOffset] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EventItem | null>(null);
-  const events = initialEvents;
+
+  // Stabilize events reference to prevent infinite re-renders
+  const eventsRef = React.useRef<EventItem[]>(initialEvents);
+  const eventsKey = JSON.stringify(initialEvents.map(e => e.id || e.title + e.date));
+
+  React.useEffect(() => {
+    eventsRef.current = initialEvents;
+  }, [eventsKey]);
+
+  const events = eventsRef.current;
 
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -137,6 +146,7 @@ export default function WeeklyCalendar({
     return days;
   }, [weekOffset]);
 
+  // Fixed: Use eventsKey instead of events array to prevent infinite loops
   const shouldUse24HourFormat = useMemo(() => {
     for (const day of weekData) {
       const dayEvents = getEventsForDateKey(asDateKey(day.date));
@@ -147,7 +157,7 @@ export default function WeeklyCalendar({
       }
     }
     return false;
-  }, [events, weekData]);
+  }, [eventsKey, weekData]);
 
   const hoursCount = shouldUse24HourFormat ? (endHour - startHour + 1) : Math.min(12 - startHour + 1, 12);
   const hourRowHeight = 56;
@@ -162,7 +172,7 @@ export default function WeeklyCalendar({
     };
   }, [weekData]);
 
- 
+
   const eventStartMinutes = (ev: EventItem) => {
     const m = ev.startMinute ?? 0;
     return Math.round(ev.startHour * 60 + m);
@@ -237,15 +247,15 @@ export default function WeeklyCalendar({
     closeModal();
   };
 
-  
- const getContrastColor = (hexColor: string): string => {
+
+  const getContrastColor = (hexColor: string): string => {
     if (!hexColor || hexColor.length < 7) return '#000000';
-    
+
     try {
       const r = parseInt(hexColor.slice(1, 3), 16);
       const g = parseInt(hexColor.slice(3, 5), 16);
       const b = parseInt(hexColor.slice(5, 7), 16);
-      
+
       const brightness = (r * 299 + g * 587 + b * 114) / 1000;
       return brightness > 128 ? '#000000' : '#FFFFFF';
     } catch {
@@ -275,8 +285,8 @@ export default function WeeklyCalendar({
         return "00:00 - 23:59";
       }
     }
-    
-    return ev.start_time && ev.end_time 
+
+    return ev.start_time && ev.end_time
       ? `${ev.start_time} - ${ev.end_time}`
       : ev.time ?? `${String(ev.startHour).padStart(2, "0")}:${String(ev.startMinute ?? 0).padStart(2, "0")} - ${String(ev.endHour ?? ev.startHour + 1).padStart(2, "0")}:${String(ev.endMinute ?? 0).padStart(2, "0")}`;
   };
@@ -286,7 +296,7 @@ export default function WeeklyCalendar({
     const eventColor = ev.project_color || ev.color || "#F59E0B";
     const eventBgColor = ev.project_color ? `${ev.project_color}70` : "#FFFBEB";
     const eventTextColor = getContrastColor(eventColor);
-    
+
     let borderStyle = {};
     if (ev.isMultiDay) {
       borderStyle = {
@@ -307,7 +317,7 @@ export default function WeeklyCalendar({
   };
 
 
-  
+
 
   return (
     <div className="bg-white rounded-[15px]  shadow border overflow-hidden box-border relative">
@@ -348,24 +358,23 @@ export default function WeeklyCalendar({
             </div>
 
             <div className="flex-1 grid grid-cols-7">
-             {weekData.map((d) => (
-              <div
-                key={asDateKey(d.date)}
-                onClick={() => onDateSelect?.(d.date)}
-                className={`py-3 text-center border-r last:border-r-0 cursor-pointer transition-colors ${
-                  d.isToday 
-                    ? "border-t-4 border-t-[#337AF7] border-b-0 border-l-0 border-r-0" 
-                    : "border-t border-l-0 border-r border-b-0 hover:bg-gray-50"
-                }`}
-              >
-                <div className={`text-sm font-semibold text-black`}>
-                  {d.month} {d.dayNum}
+              {weekData.map((d) => (
+                <div
+                  key={asDateKey(d.date)}
+                  onClick={() => onDateSelect?.(d.date)}
+                  className={`py-3 text-center border-r last:border-r-0 cursor-pointer transition-colors ${d.isToday
+                      ? "border-t-4 border-t-[#337AF7] border-b-0 border-l-0 border-r-0"
+                      : "border-t border-l-0 border-r border-b-0 hover:bg-gray-50"
+                    }`}
+                >
+                  <div className={`text-sm font-semibold text-black`}>
+                    {d.month} {d.dayNum}
+                  </div>
+                  <div className={`text-xs text-[#D7D7D7]`}>
+                    {d.dayName}
+                  </div>
                 </div>
-                <div className={`text-xs text-[#D7D7D7]`}>
-                  {d.dayName}
-                </div>
-              </div>
-            ))}
+              ))}
             </div>
 
             <div className="w-20 bg-gray-50 border-l flex items-center justify-center">
@@ -401,11 +410,11 @@ export default function WeeklyCalendar({
                 ))}
               </div>
 
-             <div className="absolute inset-0">
+              <div className="absolute inset-0">
                 {weekData.map((day, dayIdx) => {
                   const dayKey = asDateKey(day.date);
                   const dayEvents = getEventsForDateKey(dayKey);
-                  
+
                   return dayEvents.map((ev, idx) => {
                     const topPx = topPxForEvent(ev);
                     const heightPx = heightPxForEvent(ev);
@@ -431,28 +440,27 @@ export default function WeeklyCalendar({
                         }}
                       >
                         <div
-                          className={`h-full p-2 text-sm border-t shadow box-border flex flex-col rounded ${
-                            ev.project_color ?? "border-yellow-500 bg-yellow-100"
-                          }`}
+                          className={`h-full p-2 text-sm border-t shadow box-border flex flex-col rounded ${ev.project_color ?? "border-yellow-500 bg-yellow-100"
+                            }`}
                           title={ev.title}
                           style={eventStyle}
                         >
-                          <div style={{ 
-                            position: "absolute", 
-                            top: 0, 
-                            left: 0, 
-                            right: 0, 
-                            height: 2, 
-                            background: ev.project_color || ev.color || "#F59E0B", 
-                            borderTopLeftRadius: 8, 
-                            borderTopRightRadius: 8 
+                          <div style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            height: 2,
+                            background: ev.project_color || ev.color || "#F59E0B",
+                            borderTopLeftRadius: 8,
+                            borderTopRightRadius: 8
                           }} />
                           <div style={{ paddingTop: 4 }} />
                           <div className="text-xs opacity-80" style={{ fontWeight: 600 }}>
                             {displayTime}
                           </div>
                           <div className="font-medium truncate mt-1">{ev.title}</div>
-                        
+
                         </div>
                       </div>
                     );
@@ -470,25 +478,25 @@ export default function WeeklyCalendar({
         </div>
       </div>
 
-  
+
       <EventModal
         open={modalOpen}
         initial={
           editingEvent
             ? {
-                title: editingEvent.title,
-                description: editingEvent.description || "",
-                startTime: `${String(editingEvent.startHour).padStart(2, "0")}:${String(editingEvent.startMinute ?? 0).padStart(2, "0")}`,
-                endTime:
-                  typeof editingEvent.endHour === "number"
-                    ? `${String(editingEvent.endHour).padStart(2, "0")}:${String(editingEvent.endMinute ?? 0).padStart(2, "0")}`
-                    : "",
-                allDay: false,
-                guest: editingEvent.guest || "",
-                location: editingEvent.location || "",
-                projectName: editingEvent.project || "",
-                projectId: editingEvent.projectId ? Number(editingEvent.projectId) : undefined,
-              }
+              title: editingEvent.title,
+              description: editingEvent.description || "",
+              startTime: `${String(editingEvent.startHour).padStart(2, "0")}:${String(editingEvent.startMinute ?? 0).padStart(2, "0")}`,
+              endTime:
+                typeof editingEvent.endHour === "number"
+                  ? `${String(editingEvent.endHour).padStart(2, "0")}:${String(editingEvent.endMinute ?? 0).padStart(2, "0")}`
+                  : "",
+              allDay: false,
+              guest: editingEvent.guest || "",
+              location: editingEvent.location || "",
+              projectName: editingEvent.project || "",
+              projectId: editingEvent.projectId ? Number(editingEvent.projectId) : undefined,
+            }
             : null
         }
         onClose={closeModal}

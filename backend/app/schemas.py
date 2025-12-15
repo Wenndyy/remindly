@@ -26,11 +26,26 @@ class UserResponse(BaseModel):
     role: str
     is_active: int
     full_name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    phone_number: Optional[str] = None
+    country: Optional[str] = None
+    city: Optional[str] = None
     profile_picture: Optional[str] = None
     created_at: Optional[int] = None
     
     class Config:
         from_attributes = True
+
+class ProfileUpdate(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    phone_number: Optional[str] = None
+    country: Optional[str] = None
+    city: Optional[str] = None
+    profile_picture: Optional[str] = None
 
 class RegisterResponse(BaseModel):
     msg: str

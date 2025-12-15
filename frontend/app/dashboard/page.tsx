@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import MonthCalendarPreview from "../components/MonthCalendarPreview";
 import WeeklyCalendar, { EventItem } from "../components/WeeklyCalendar";
+import Header from "../components/Header";
 import { useRouter } from "next/navigation";
 import TaskList from "../components/TaskList";
 import NotificationDropdown from "../components/NotificationDropdown";
@@ -173,26 +174,7 @@ export default function DashboardContent({ initialUser = null }: { initialUser?:
         </div>
 
         <div className="col-span-8 space-y-4">
-          <div className="flex items-center justify-between bg-linear-to-r bg-white text-white px-6 py-4 rounded-[15px] shadow">
-            <h2 className="text-2xl font-bold text-black">Halo, {name}!</h2>
-
-            <div className="flex items-center gap-4">
-              <NotificationDropdown />
-              <div className="flex items-center gap-3">
-                <img
-                  src={photo ?? fallback}
-                  alt={`${name} profile`}
-                  className="w-[59px] h-[59px] rounded-full object-cover  border-gray-200"
-                  onError={(e) => {
-                    const t = e.currentTarget as HTMLImageElement;
-                    t.onerror = null;
-                    t.src = fallback;
-                  }}
-                />
-
-              </div>
-            </div>
-          </div>
+          <Header title={`Halo, ${name}!`} />
 
           <WeeklyCalendar
             selectedDate={selectedDate}

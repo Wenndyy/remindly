@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Depends, HTTPException, Body, Request ,status
+from fastapi import FastAPI, Depends, HTTPException, Body, Request ,status, UploadFile, File
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session,joinedload
 from app.database import SessionLocal, init_db
 from app.models import User, Event, Project, Notification
@@ -7,10 +8,11 @@ from .schemas import (
     UserCreate, UserLogin, TokenResponse, ResetPasswordSchema, 
     RegisterResponse, UserResponse, EventCreate, EventResponse,
     ProjectCreate, ProjectUpdate, ProjectResponse,
-    NotificationResponse, NotificationCreate, UpcomingEventSummary, UpcomingTasksResponse
+    NotificationResponse, NotificationCreate, UpcomingEventSummary, UpcomingTasksResponse,
+    ProfileUpdate
 )
 from app.ai_service import get_ai_service
-import time, secrets, json  
+import time, secrets, json, os, uuid
 from typing import List, Optional
 from datetime import datetime, timedelta
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,6 +37,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Create uploads directory for profile pictures
+UPLOAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "uploads"))
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+print(f"[INFO] Upload directory: {UPLOAD_DIR}")
+
+# Mount static files for serving uploads
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
 # Dependency DB
 def get_db():
     db = SessionLocal()
@@ -51,9 +61,6 @@ def health_check():
 @app.post("/register", response_model=RegisterResponse)
 def register(user: UserCreate, db: Session = Depends(get_db)):
     try:
-        if db.query(User).filter(User.email == user.email).first():
-            raise HTTPException(status_code=400, detail="email already exists")
-        
         if db.query(User).filter(User.email == user.email).first():
             raise HTTPException(status_code=400, detail="Email already exists")
         
@@ -172,6 +179,111 @@ def admin_dashboard(current_user: User = Depends(lambda: get_current_user(requir
 @app.get("/me", response_model=UserResponse)
 def get_me(current_user: User = Depends(get_current_user)):
     return UserResponse.from_orm(current_user)
+
+@app.put("/profile", response_model=UserResponse)
+async def update_profile(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Update user profile. Accepts partial updates.
+    Fields: first_name, last_name, date_of_birth, phone_number, country, city, profile_picture
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    # Validate with Pydantic
+    try:
+        profile_data = ProfileUpdate(**body)
+    except Exception as e:
+         raise HTTPException(status_code=422, detail=str(e))
+
+    # Re-fetch user from database to ensure it's in current session
+    user = db.query(User).filter(User.id == current_user.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get provided fields from Pydantic model
+    update_data = profile_data.dict(exclude_unset=True)
+    
+    allowed_fields = ['first_name', 'last_name', 'date_of_birth', 'phone_number', 'country', 'city', 'profile_picture']
+    
+    for field in allowed_fields:
+        if field in update_data:
+            setattr(user, field, update_data[field])
+    
+    # Update full_name if first_name or last_name changed
+    if 'first_name' in update_data or 'last_name' in update_data:
+        first = update_data.get('first_name') or user.first_name or ''
+        last = update_data.get('last_name') or user.last_name or ''
+        user.full_name = f"{first} {last}".strip()
+    
+    try:
+        db.commit()
+        db.refresh(user)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    
+    return UserResponse.from_orm(user)
+
+
+
+@app.post("/upload-profile-picture")
+async def upload_profile_picture(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Upload a profile picture. Returns the URL of the uploaded image.
+    Accepts: image/jpeg, image/png, image/gif, image/webp
+    """
+    # Validate file type
+    allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid file type. Allowed: {', '.join(allowed_types)}"
+        )
+    
+    # Re-fetch user from database to ensure it's in current session
+    user = db.query(User).filter(User.id == current_user.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Generate unique filename
+    ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
+    filename = f"profile_{user.id}_{uuid.uuid4().hex[:8]}.{ext}"
+    filepath = os.path.join(UPLOAD_DIR, filename)
+    
+    # Save file
+    try:
+        contents = await file.read()
+        with open(filepath, "wb") as f:
+            f.write(contents)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
+    
+    # Update user's profile picture URL
+    profile_url = f"/uploads/{filename}"
+    user.profile_picture = profile_url
+    
+    try:
+        db.commit()
+        db.refresh(user)
+    except Exception as e:
+        db.rollback()
+        # Clean up uploaded file on error
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    
+    return {"url": profile_url, "message": "Profile picture uploaded successfully"}
+
 
 @app.post("/events", response_model=EventResponse)
 async def create_event(
@@ -391,8 +503,11 @@ async def update_event(
         event.guest = payload.guest
     if payload.location is not None:
         event.location = payload.location
-    if payload.project_id is not None:
-        event.project_id = payload.project_id
+    
+    # Handle project_id explicitly - allow setting to None (remove from project)
+    # Check if project_id was provided in the request (including null)
+    if 'project_id' in data_obj:
+        event.project_id = payload.project_id  # Can be None to remove from project
 
     # Jika all_day true, pastikan times ada
     if event.all_day:

@@ -3,12 +3,13 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import axiosClient from "../api/axiosClient";
+import Header from "../components/Header";
 
 
 type Project = {
   id: number;
   name: string;
-  color?: string | null; 
+  color?: string | null;
   meetings: number;
 };
 
@@ -26,7 +27,7 @@ export default function ProjectPage({
 
   const [searchQuery, setSearchQuery] = useState("");
 
- 
+
   const [showModal, setShowModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
@@ -71,7 +72,7 @@ export default function ProjectPage({
       }
 
       try {
-      
+
         const res = await axiosClient.get("/me");
         if (!mounted) return;
         setUser({
@@ -193,7 +194,7 @@ export default function ProjectPage({
     setShowDeleteConfirm(false);
   };
 
-  
+
   const handleAttemptCloseModal = (modalType: "add" | "edit") => {
     if (projectName || projectColor) {
       setPendingCloseModal(modalType);
@@ -231,22 +232,7 @@ export default function ProjectPage({
     <>
       <div className="w-full h-full p-0 m-0">
         {/* Header */}
-        <div className="flex items-center justify-between bg-white px-6 py-4 rounded-[15px] shadow mb-[15px]">
-          <h2 className="text-2xl font-bold text-black">Project</h2>
-          <div className="flex items-center gap-4">
-            <img src="/notif-off.svg" alt="notification" />
-            <img
-                    src={photo ?? fallback}
-                    alt={`${name} profile`}
-                    className="w-[59px] h-[59px] rounded-full object-cover  border-gray-200"
-                    onError={(e) => {
-                      const t = e.currentTarget as HTMLImageElement;
-                      t.onerror = null;
-                      t.src = fallback;
-                    }}
-                  />
-          </div>
-        </div>
+        <Header title="Project" />
 
         <div className="bg-white rounded-[15px] shadow p-6">
           <div className="flex items-center justify-between gap-4 mb-4">
@@ -305,8 +291,8 @@ export default function ProjectPage({
                   className="flex items-center justify-between border border-gray-200 rounded-xl px-6 py-4 shadow-sm hover:shadow-md transition cursor-pointer"
                 >
                   <div className="flex items-center gap-4">
-                    <div 
-                      className="w-1 h-10 rounded-full" 
+                    <div
+                      className="w-1 h-10 rounded-full"
                       style={{ backgroundColor: project.color || '#6B7280' }}
                     />
                     <div>
@@ -353,16 +339,16 @@ export default function ProjectPage({
 
                           <div className="border-t my-1" />
 
-                         <button
+                          <button
                             className="flex items-center gap-3 px-3 py-3 hover:bg-gray-100 text-red-600 w-full text-left"
                             onClick={(e) => {
                               e.stopPropagation();
                               openDeleteModal(project.id);
                             }}
                           >
-                          <img src="/delete.svg" className="w-5 h-5" />
-                          <span className="text-sm">Delete</span>
-                        </button>
+                            <img src="/delete.svg" className="w-5 h-5" />
+                            <span className="text-sm">Delete</span>
+                          </button>
                         </div>
                       </div>
                     )}
@@ -408,8 +394,8 @@ export default function ProjectPage({
               >
                 {projectColor ? (
                   <span className="flex items-center gap-2">
-                    <span 
-                      className="w-4 h-4 rounded-full" 
+                    <span
+                      className="w-4 h-4 rounded-full"
                       style={{ backgroundColor: projectColor }}
                     ></span>
                     {getColorLabel(projectColor)}
@@ -499,8 +485,8 @@ export default function ProjectPage({
               >
                 {projectColor ? (
                   <span className="flex items-center gap-2">
-                    <span 
-                      className="w-4 h-4 rounded-full" 
+                    <span
+                      className="w-4 h-4 rounded-full"
                       style={{ backgroundColor: projectColor }}
                     ></span>
                     {getColorLabel(projectColor)}

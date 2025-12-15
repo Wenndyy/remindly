@@ -5,6 +5,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import axiosClient from "../api/axiosClient";
 import CustomCalendar from "../components/CustomCalendar";
+import Header from "../components/Header";
 
 type UserShape = { photoURL?: string | null; name?: string | null } | null;
 
@@ -19,7 +20,7 @@ export default function CalendarPage({
   const [user, setUser] = useState<UserShape>(initialUser);
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshTrigger, setRefreshTrigger] = useState(0); 
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const fetchEvents = async () => {
     try {
       setLoading(true);
@@ -31,23 +32,23 @@ export default function CalendarPage({
         const startDate = new Date(event.start_date);
         const endDate = new Date(event.end_date);
         const datesInRange = [];
-        
+
         // Generate dates from start_date to end_date
         for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
           const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-          
+
           let startHour = 9;
           let startMinute = 0;
           let endHour = 10;
           let endMinute = 0;
           let time = "09:00 - 10:00";
-          
+
           // For first day, use actual times
           if (date.toDateString() === startDate.toDateString()) {
             if (event.start_time && event.end_time) {
               const startTime = event.start_time.split(':');
               const endTime = event.end_time.split(':');
-              
+
               startHour = parseInt(startTime[0]);
               startMinute = parseInt(startTime[1]);
               endHour = parseInt(endTime[0]);
@@ -73,7 +74,7 @@ export default function CalendarPage({
             id: `${event.id}-${dateKey}`, // Unique ID untuk setiap hari
             originalId: event.id,
             date: dateKey, // Display date untuk calendar
-            startDate: event.start_date, 
+            startDate: event.start_date,
             endDate: event.end_date,
             startHour: startHour,
             startMinute: startMinute,
@@ -95,7 +96,7 @@ export default function CalendarPage({
             isLastDay: date.toDateString() === endDate.toDateString()
           });
         }
-        
+
         return datesInRange;
       });
 
@@ -107,7 +108,7 @@ export default function CalendarPage({
       setLoading(false);
     }
   };
-    
+
 
   useEffect(() => {
     let mounted = true;
@@ -119,12 +120,12 @@ export default function CalendarPage({
     return () => {
       mounted = false;
     };
-  }, [checkedAuth, refreshTrigger]); 
+  }, [checkedAuth, refreshTrigger]);
 
 
   const handleEventChange = () => {
     console.log("Event changed, refreshing data...");
-    setRefreshTrigger(prev => prev + 1); 
+    setRefreshTrigger(prev => prev + 1);
   };
 
   useEffect(() => {
@@ -173,24 +174,7 @@ export default function CalendarPage({
 
   return (
     <div className="w-full h-full p-0 m-0">
-      <div className="flex items-center justify-between bg-white px-6 py-4 rounded-[15px] shadow mb-[15px]">
-        <h2 className="text-2xl font-bold text-black">Calendar</h2>
-        <div className="flex items-center gap-4">
-          <img src="/notif-off.svg" alt="notification" />
-          <div className="flex items-center gap-3">
-            <img
-              src={photo ?? fallback}
-              alt={`${name} profile`}
-              className="w-[59px] h-[59px] rounded-full object-cover border-gray-200"
-              onError={(e) => {
-                const t = e.currentTarget as HTMLImageElement;
-                t.onerror = null;
-                t.src = fallback;
-              }}
-            />
-          </div>
-        </div>
-      </div>
+      <Header title="Calendar" />
 
       <div className="w-full">
         {loading ? (
@@ -202,7 +186,7 @@ export default function CalendarPage({
             selectedDate={selectedDate}
             onDateSelect={setSelectedDate}
             initialEvents={displayEvents}
-            onEventChange={handleEventChange} 
+            onEventChange={handleEventChange}
           />
         )}
       </div>

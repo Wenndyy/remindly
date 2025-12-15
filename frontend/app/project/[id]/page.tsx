@@ -4,6 +4,7 @@
 import { useEffect, useState, useRef, Key } from "react";
 import { useParams, useRouter } from "next/navigation";
 import axiosClient from "../../api/axiosClient";
+import Header from "../../components/Header";
 
 import EventModal from "../../components/EventModal";
 
@@ -14,7 +15,7 @@ type EventShape = {
   dateEnd: string;
   participants: number;
   project_name: string;
-  project_color: string; 
+  project_color: string;
   project_id: number;
   description?: string;
   location?: string;
@@ -79,7 +80,7 @@ export default function ProjectDetailPage({
     { label: 'Purple', value: '#A855F7', class: 'bg-purple-500' },
   ];
 
-  
+
   const getColorLabel = (hexColor: string) => {
     const option = colorOptions.find(opt => opt.value === hexColor);
     return option ? option.label : "Select Color";
@@ -129,7 +130,7 @@ export default function ProjectDetailPage({
     };
   }, [router]);
 
- 
+
   useEffect(() => {
     let mounted = true;
 
@@ -138,7 +139,7 @@ export default function ProjectDetailPage({
         setLoading(true);
 
         const projectRes = await axiosClient.get(`/projects/${projectId}?include_events=true`);
-       
+
         if (!mounted) return;
 
         const projectData = projectRes.data;
@@ -147,21 +148,21 @@ export default function ProjectDetailPage({
 
           if (projectData.events && projectData.events.length > 0) {
             const formattedEvents = projectData.events.map((event: any) => {
-              const projectColor = 
-                event.color || 
-                event.project_color || 
-                projectData.color || 
+              const projectColor =
+                event.color ||
+                event.project_color ||
+                projectData.color ||
                 "#337AF7";
-             
-              
+
+
               return {
                 id: event.id,
                 title: event.title,
                 dateStart: event.start_date,
                 dateEnd: event.end_date,
                 participants: event.participants || 0,
-                project_name: event.project_name || projectData.name, 
-                project_color: projectColor, 
+                project_name: event.project_name || projectData.name,
+                project_color: projectColor,
                 project_id: Number(projectId),
                 description: event.description,
                 location: event.location,
@@ -204,55 +205,55 @@ export default function ProjectDetailPage({
   }, [projectId]);
 
 
- 
+
   const formatDate = (dateString: string) => {
     if (!dateString) return "Not specified";
-    
+
     const date = new Date(dateString);
-    const options: Intl.DateTimeFormatOptions = { 
-      day: 'numeric', 
-      month: 'long', 
-      year: 'numeric' 
+    const options: Intl.DateTimeFormatOptions = {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
     };
     return date.toLocaleDateString('id-ID', options);
   };
 
-  
+
   const formatDisplayDate = (startDate: string, endDate?: string) => {
     if (!startDate) return "Not specified";
-    
+
     const start = new Date(startDate);
-    
+
     if (!endDate || startDate === endDate) {
-      const options: Intl.DateTimeFormatOptions = { 
+      const options: Intl.DateTimeFormatOptions = {
         weekday: 'long',
-        day: 'numeric', 
-        month: 'long', 
-        year: 'numeric' 
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
       };
       return start.toLocaleDateString('en-US', options);
     }
-    
-    const end = new Date(endDate);
-    
 
-    const startOptions: Intl.DateTimeFormatOptions = { 
+    const end = new Date(endDate);
+
+
+    const startOptions: Intl.DateTimeFormatOptions = {
       weekday: 'long',
-      day: 'numeric', 
-      month: 'long', 
-      year: 'numeric' 
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
     };
-    
-    const endOptions: Intl.DateTimeFormatOptions = { 
+
+    const endOptions: Intl.DateTimeFormatOptions = {
       weekday: 'long',
-      day: 'numeric', 
-      month: 'long', 
-      year: 'numeric' 
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
     };
-    
+
     const startFormatted = start.toLocaleDateString('en-US', startOptions);
     const endFormatted = end.toLocaleDateString('en-US', endOptions);
-    
+
     return `${startFormatted} - ${endFormatted}`;
   };
   // Event Modal Handlers
@@ -271,31 +272,23 @@ export default function ProjectDetailPage({
   };
 
   const handleSaveFromModal = async (eventData: any) => {
+    // EventModal already saved the event to the backend.
+    // This callback only needs to update the local UI state.
     try {
-      const formattedData = {
-        title: eventData.title,
-        description: eventData.description || "",
-        start_date: eventData.startDate,
-        end_date: eventData.endDate || eventData.startDate,
-        start_time: eventData.startTime || null,
-        end_time: eventData.endTime || null,
-        all_day: eventData.allDay || false,
-        location: eventData.location || "",
-        guest: eventData.guest || "",
-        project_id: projectId,
-        participants: editingEvent?.participants || 0,
-      };
+      // Get the new project ID from the modal's data
+      const newProjectId = eventData.projectId;
 
-      if (editingEvent) {
-        await axiosClient.put(`/events/${editingEvent.id}`, formattedData);
-      } else {
-        await axiosClient.post("/events", formattedData);
+      // If the event was moved to a DIFFERENT project, remove it from this page's list
+      if (editingEvent && newProjectId !== undefined && String(newProjectId) !== String(projectId)) {
+        setEvents(prev => prev.filter(e => e.id !== editingEvent.id));
+        closeModal();
+        return;
       }
-      
 
+      // Otherwise, refresh the current project's events list from the server
       const projectRes = await axiosClient.get(`/projects/${projectId}`);
       const projectData = projectRes.data;
-      
+
       if (projectData.events && projectData.events.length > 0) {
         const formattedEvents = projectData.events.map((event: any) => ({
           id: event.id,
@@ -320,21 +313,17 @@ export default function ProjectDetailPage({
           endMinute: event.end_minute,
         }));
         setEvents(formattedEvents);
+      } else {
+        setEvents([]);
       }
-      
+
       closeModal();
     } catch (err: any) {
-      console.error("Failed to save event:", err);
-      
-      // Tampilkan error detail dari backend
-      const errorMessage = err.response?.data?.detail || 
-                          err.response?.data?.message || 
-                          "Failed to save event";
-      alert(`Error: ${errorMessage}`);
+      console.error("Failed to refresh events:", err);
     }
   };
 
-  
+
   const handleDeleteEvent = (event: EventShape) => {
     setEventDetails(event);
     setShowDeleteConfirm(true);
@@ -360,7 +349,7 @@ export default function ProjectDetailPage({
     }
   };
 
- 
+
   const openEventDetails = (event: EventShape) => {
     setEventDetails(event);
     setShowDetailsModal(true);
@@ -373,36 +362,36 @@ export default function ProjectDetailPage({
 
   const formatTimeDisplay = (startTime?: string, endTime?: string) => {
     if (!startTime) return "Not specified";
-    
+
     const formatTime = (timeString: string) => {
       const time = new Date(`2000-01-01T${timeString}`);
-      return time.toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
+      return time.toLocaleTimeString('en-US', {
+        hour: 'numeric',
         minute: '2-digit',
-        hour12: true 
+        hour12: true
       });
     };
 
     if (endTime) {
       return `${formatTime(startTime)} - ${formatTime(endTime)}`;
     }
-    
+
     return formatTime(startTime);
   };
 
   const calculateDuration = (startTime?: string, endTime?: string) => {
     if (!startTime || !endTime) return "";
-    
+
     const start = new Date(`2000-01-01T${startTime}`);
     const end = new Date(`2000-01-01T${endTime}`);
     const diffMs = end.getTime() - start.getTime();
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    
+
     if (diffHours > 0) {
       return `(${diffHours}h${diffMinutes > 0 ? ` ${diffMinutes}m` : ''})`;
     }
-    
+
     return `(${diffMinutes}m)`;
   };
 
@@ -428,13 +417,13 @@ export default function ProjectDetailPage({
       };
 
       await axiosClient.post("/projects", { payload: projectData });
-      
+
       setNewProjectName("");
       setNewProjectColor("");
       setShowModal(false);
-      
+
       alert("Project created successfully!");
-      
+
     } catch (err) {
       console.error("Failed to add project:", err);
       alert("Failed to add project");
@@ -454,7 +443,7 @@ export default function ProjectDetailPage({
     const matchesSearch = event.title.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch;
   });
-   const fallback = "/person.svg";
+  const fallback = "/person.svg";
 
   if (!checkedAuth) {
     return <div className="p-6">Memeriksa autentikasi...</div>;
@@ -463,22 +452,7 @@ export default function ProjectDetailPage({
   return (
     <div className="w-full h-full p-0 m-0">
       {/* Header */}
-      <div className="flex items-center justify-between bg-white px-6 py-4 rounded-[15px] shadow mb-[15px]">
-        <h2 className="text-2xl font-bold text-black">Project</h2>
-        <div className="flex items-center gap-4">
-          <img src="/notif-off.svg" alt="notification" />
-           <img
-                    src={photo ?? fallback}
-                    alt={`${name} profile`}
-                    className="w-[59px] h-[59px] rounded-full object-cover  border-gray-200"
-                    onError={(e) => {
-                      const t = e.currentTarget as HTMLImageElement;
-                      t.onerror = null;
-                      t.src = fallback;
-                    }}
-                  />
-        </div>
-      </div>
+      <Header title="Project" />
 
       {/* Events Section */}
       <div className="bg-white rounded-[15px] shadow p-6">
@@ -501,14 +475,14 @@ export default function ProjectDetailPage({
               </svg>
             </button>
 
-       
+
             <h3 className="text-lg font-semibold text-black min-w-[120px]">
               {projectName}
             </h3>
           </div>
 
           <div className="flex items-center gap-3">
-    
+
             <div className="relative flex-1 max-w-[480px]">
               <svg
                 className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
@@ -580,14 +554,14 @@ export default function ProjectDetailPage({
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <div 
+                      <div
                         className="w-3 h-3 rounded-full"
                         style={{ backgroundColor: event.project_color || '#337AF7' }} // Menggunakan inline style dengan hex
                       />
                       <span className="text-sm text-gray-700 font-medium">{event.project_name}</span>
                     </div>
 
-                    <button 
+                    <button
                       className="px-4 py-2 text-sm font-medium text-blue-600 border border-blue-600 rounded-lg hover:bg-gray-50 transition-colors"
                       onClick={() => openEventDetails(event)}
                     >
@@ -681,8 +655,8 @@ export default function ProjectDetailPage({
               >
                 {newProjectColor ? (
                   <span className="flex items-center gap-2">
-                    <span 
-                      className="w-4 h-4 rounded-full" 
+                    <span
+                      className="w-4 h-4 rounded-full"
                       style={{ backgroundColor: newProjectColor }} // Menggunakan inline style dengan hex
                     ></span>
                     {getColorLabel(newProjectColor)}
@@ -737,7 +711,7 @@ export default function ProjectDetailPage({
           </div>
         </div>
       )}
-     
+
       {showCancelConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-60">
           <div className="bg-white rounded-lg p-6 w-[627px] shadow-lg">
@@ -770,25 +744,25 @@ export default function ProjectDetailPage({
         initial={
           editingEvent
             ? {
-                id: editingEvent.id ? Number(editingEvent.id) : undefined,
-                title: editingEvent.title,
-                description: editingEvent.description || "",
-                startDate: editingEvent.dateStart || "",
-                endDate: editingEvent.dateEnd || "",
-                startTime:
-                  typeof editingEvent.startHour === "number"
-                    ? `${String(editingEvent.startHour).padStart(2, "0")}:${String(editingEvent.startMinute ?? 0).padStart(2, "0")}`
-                    : "",
-                endTime:
-                  typeof editingEvent.endHour === "number"
-                    ? `${String(editingEvent.endHour).padStart(2, "0")}:${String(editingEvent.endMinute ?? 0).padStart(2, "0")}`
-                    : "",
-                allDay: editingEvent.all_day || false,
-                guest: editingEvent.guest || "",
-                location: editingEvent.location || "",
-                projectId: editingEvent.projectId ?? undefined,
-                projectName: editingEvent.project || "",
-              }
+              id: editingEvent.id ? Number(editingEvent.id) : undefined,
+              title: editingEvent.title,
+              description: editingEvent.description || "",
+              startDate: editingEvent.dateStart || "",
+              endDate: editingEvent.dateEnd || "",
+              startTime:
+                typeof editingEvent.startHour === "number"
+                  ? `${String(editingEvent.startHour).padStart(2, "0")}:${String(editingEvent.startMinute ?? 0).padStart(2, "0")}`
+                  : "",
+              endTime:
+                typeof editingEvent.endHour === "number"
+                  ? `${String(editingEvent.endHour).padStart(2, "0")}:${String(editingEvent.endMinute ?? 0).padStart(2, "0")}`
+                  : "",
+              allDay: editingEvent.all_day || false,
+              guest: editingEvent.guest || "",
+              location: editingEvent.location || "",
+              projectId: editingEvent.projectId ?? undefined,
+              projectName: editingEvent.project || "",
+            }
             : null
         }
         onClose={closeModal}
@@ -857,7 +831,7 @@ export default function ProjectDetailPage({
                 <div>
                   <div className="text-sm text-gray-500">Date</div>
                   <div className="text-gray-900 font-medium">
-                    {formatDisplayDate(eventDetails.dateStart , eventDetails.dateEnd)}
+                    {formatDisplayDate(eventDetails.dateStart, eventDetails.dateEnd)}
                   </div>
                 </div>
               </div>
@@ -898,7 +872,7 @@ export default function ProjectDetailPage({
                     <div className="flex -space-x-3">
                       {(() => {
                         const totalParticipants = eventDetails.participants || 0;
-                        
+
                         if (totalParticipants > 0) {
                           return (
                             <>
@@ -911,7 +885,7 @@ export default function ProjectDetailPage({
                                   {String.fromCharCode(65 + index)}
                                 </div>
                               ))}
-                              
+
                               {totalParticipants > 3 && (
                                 <div className="ml-4 text-gray-700 font-medium items-center justify-center flex">
                                   +{totalParticipants - 3}

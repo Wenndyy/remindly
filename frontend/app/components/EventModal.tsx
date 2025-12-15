@@ -1,8 +1,9 @@
 // components/EventModal.tsx
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import axiosClient from "../api/axiosClient";
+import Toast, { useToast } from "./Toast";
 
 export type EventForm = {
   id?: number;
@@ -32,6 +33,15 @@ type Project = {
   color?: string | null;
   meetings?: number;
 };
+
+// Move debounce outside component to prevent recreation
+function debounce(fn: (q: string) => void, wait = 300): (q: string) => void {
+  let t: ReturnType<typeof setTimeout> | null = null;
+  return (q: string) => {
+    if (t) clearTimeout(t);
+    t = setTimeout(() => fn(q), wait);
+  };
+}
 
 export default function EventModal({
   open,
@@ -80,14 +90,30 @@ export default function EventModal({
 
   const [discardOpen, setDiscardOpen] = useState(false);
 
+  // Toast for success/error feedback
+  const { toast, showToast, hideToast } = useToast();
 
-  const debounce = (fn: (...args: any[]) => void, wait = 300) => {
-    let t: ReturnType<typeof setTimeout> | null = null;
-    return (...args: any[]) => {
-      if (t) clearTimeout(t);
-      t = setTimeout(() => fn(...args), wait);
-    };
-  };
+  // Stabilize fetchUsers with useCallback
+  const fetchUsers = useCallback(async (q: string) => {
+    setUsersLoading(true);
+    try {
+      const token = localStorage.getItem("access_token");
+      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+      const url = q ? `/users?query=${encodeURIComponent(q)}&limit=10` : `/users?limit=10`;
+      const res = await axiosClient.get<User[]>(url, config);
+      setRemoteUsers(res.data || []);
+    } catch (err) {
+      console.error("Failed fetching users:", err);
+      setRemoteUsers([]);
+    } finally {
+      setUsersLoading(false);
+    }
+  }, []);
+
+  // Create stable debounced function that only depends on the stable fetchUsers ref
+  const debouncedFetch = useMemo(() => debounce((q: string) => {
+    fetchUsers(q);
+  }, 250), [fetchUsers]);
 
 
   useEffect(() => {
@@ -139,26 +165,6 @@ export default function EventModal({
     }
   }, [initial, open]);
 
-
-  const fetchUsers = async (q: string) => {
-    setUsersLoading(true);
-    try {
-      const token = localStorage.getItem("access_token");
-      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
-      const url = q ? `/users?query=${encodeURIComponent(q)}&limit=10` : `/users?limit=10`;
-      const res = await axiosClient.get<User[]>(url, config);
-      setRemoteUsers(res.data || []);
-    } catch (err) {
-      console.error("Failed fetching users:", err);
-      setRemoteUsers([]);
-    } finally {
-      setUsersLoading(false);
-    }
-  };
-
- 
-  const debouncedFetch = React.useCallback(debounce(fetchUsers, 250), []);
-
   useEffect(() => {
     const q = guestInput.trim();
     if (!q) {
@@ -168,7 +174,7 @@ export default function EventModal({
     }
     setShowSuggestions(true);
     debouncedFetch(q);
-  }, [guestInput, debouncedFetch]);
+  }, [guestInput]);
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -218,8 +224,8 @@ export default function EventModal({
     }
   }
 
-  const today = new Date();
-  const todayStr = today.toISOString().split("T")[0];
+  // Today's date string for date input min attribute
+  const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
 
   function isTimeGreater(t1: string, t2: string) {
     return t1.localeCompare(t2) === 1;
@@ -231,7 +237,12 @@ export default function EventModal({
 
 
   async function handleSave() {
-
+    // Get fresh date/time values at save time to avoid stale comparisons
+    const now = new Date();
+    const todayStr = now.toISOString().split("T")[0];
+    const currentHH = now.getHours().toString().padStart(2, "0");
+    const currentMM = now.getMinutes().toString().padStart(2, "0");
+    const currentTime = `${currentHH}:${currentMM}`;
 
     if (!form.title.trim()) {
       alert("Title is required");
@@ -272,11 +283,8 @@ export default function EventModal({
         return;
       }
 
+      // Only check time if event is TODAY
       if (form.startDate === todayStr) {
-        const hh = today.getHours().toString().padStart(2, "0");
-        const mm = today.getMinutes().toString().padStart(2, "0");
-        const currentTime = `${hh}:${mm}`;
-
         if (!isTimeGreater(form.startTime, currentTime)) {
           alert("Start time must be greater than current time");
           return;
@@ -330,11 +338,16 @@ export default function EventModal({
         projectName: data.project_name ?? form.projectName ?? "",
       };
 
-      onSave(normalized);
-      onClose();
+      showToast(initial?.id ? "Event updated successfully!" : "Event created successfully!", "success");
+
+      // Delay close to show toast
+      setTimeout(() => {
+        onSave(normalized);
+        onClose();
+      }, 1000);
     } catch (error: any) {
       console.error("Error saving event:", error.response?.data || error.message);
-      alert(error.response?.data?.detail || "Error saving event, check console for details");
+      showToast(error.response?.data?.detail || "Failed to save event. Please try again.", "error");
     }
   }
 
@@ -442,26 +455,25 @@ export default function EventModal({
                       style={{ width: 120 }}
                     />
                     <span className="mx-3 text-sm text-[#888]" aria-hidden>—</span>
-                  <div className="flex flex-col">
-                    <input
-                      type="time"
-                      value={form.endTime}
-                      min={form.startTime}
-                      onChange={(e) => setForm({ ...form, endTime: e.target.value })}
-                      className={`border rounded-xl px-2 py-2 text-sm text-[#55565B] ${
-                        form.endTime && form.startTime && form.endTime < form.startTime
+                    <div className="flex flex-col">
+                      <input
+                        type="time"
+                        value={form.endTime}
+                        min={form.startTime}
+                        onChange={(e) => setForm({ ...form, endTime: e.target.value })}
+                        className={`border rounded-xl px-2 py-2 text-sm text-[#55565B] ${form.endTime && form.startTime && form.endTime < form.startTime
                           ? "border-red-500"
                           : ""
-                      }`}
-                      style={{ width: 120 }}
-                    />
+                          }`}
+                        style={{ width: 120 }}
+                      />
 
-                    {form.endTime && form.startTime && form.endTime < form.startTime && (
-                      <span className="text-red-500 text-xs mt-1">
-                        End time cannot be earlier than start time
-                      </span>
-                    )}
-                  </div>
+                      {form.endTime && form.startTime && form.endTime < form.startTime && (
+                        <span className="text-red-500 text-xs mt-1">
+                          End time cannot be earlier than start time
+                        </span>
+                      )}
+                    </div>
 
 
                   </div>
@@ -587,7 +599,7 @@ export default function EventModal({
               />
             </div>
 
-      
+
             <div className="mb-6">
               <label className="block text-xs text-[#55565B] mb-1">Project</label>
               <div style={{ maxWidth: 320 }} ref={projRef} className="relative">
@@ -693,6 +705,14 @@ export default function EventModal({
           </div>
         </div>
       )}
+
+      {/* Toast notification */}
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        isVisible={toast.isVisible}
+        onClose={hideToast}
+      />
     </>
   );
 }

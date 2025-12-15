@@ -30,7 +30,12 @@ class User(Base):
     # Profil
     profile_picture = Column(String, nullable=True)
     full_name = Column(String, nullable=True)
+    first_name = Column(String, nullable=True)
+    last_name = Column(String, nullable=True)
+    date_of_birth = Column(String, nullable=True)
     phone_number = Column(String, nullable=True)
+    country = Column(String, nullable=True)
+    city = Column(String, nullable=True)
 
     # Relationships
     events = relationship("Event", back_populates="user", cascade="all, delete-orphan")

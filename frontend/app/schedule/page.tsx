@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import axiosClient from "../api/axiosClient";
 
 import EventModal, { EventForm } from "../components/EventModal";
+import Header from "../components/Header";
 
 type UserShape = { photoURL?: string | null; name?: string | null } | null;
 
@@ -17,7 +18,7 @@ type ScheduleEvent = {
   participants: number;
   project: string;
   projectColor?: string;
-  projectColorClass?: string; 
+  projectColorClass?: string;
 };
 
 export type EventItem = {
@@ -34,7 +35,7 @@ export type EventItem = {
   description?: string;
   guest?: string;
   location?: string;
-  project?: string; 
+  project?: string;
   projectId?: number | null;
   projectColor?: string;
 };
@@ -74,7 +75,7 @@ export default function TaskPage({
   const [eventDetails, setEventDetails] = useState<any>(null);
 
   const menuRef = useRef<HTMLDivElement | null>(null);
-  
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -87,98 +88,98 @@ export default function TaskPage({
 
   const formatDate = (dateString: string) => {
     if (!dateString) return "Not specified";
-    
+
     const date = new Date(dateString);
-    const options: Intl.DateTimeFormatOptions = { 
-      day: 'numeric', 
-      month: 'long', 
-      year: 'numeric' 
+    const options: Intl.DateTimeFormatOptions = {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
     };
     return date.toLocaleDateString('id-ID', options);
   };
 
   const formatDisplayDate = (startDate: string, endDate?: string) => {
     if (!startDate) return "Not specified";
-    
+
     const start = new Date(startDate);
-    
+
     if (!endDate || startDate === endDate) {
-      const options: Intl.DateTimeFormatOptions = { 
+      const options: Intl.DateTimeFormatOptions = {
         weekday: 'long',
-        day: 'numeric', 
-        month: 'long', 
-        year: 'numeric' 
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
       };
       return start.toLocaleDateString('en-US', options);
     }
-    
-    const end = new Date(endDate);
-    
 
-    const startOptions: Intl.DateTimeFormatOptions = { 
+    const end = new Date(endDate);
+
+
+    const startOptions: Intl.DateTimeFormatOptions = {
       weekday: 'long',
-      day: 'numeric', 
-      month: 'long', 
-      year: 'numeric' 
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
     };
-    
-    const endOptions: Intl.DateTimeFormatOptions = { 
+
+    const endOptions: Intl.DateTimeFormatOptions = {
       weekday: 'long',
-      day: 'numeric', 
-      month: 'long', 
-      year: 'numeric' 
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
     };
-    
+
     const startFormatted = start.toLocaleDateString('en-US', startOptions);
     const endFormatted = end.toLocaleDateString('en-US', endOptions);
-    
+
     return `${startFormatted} - ${endFormatted}`;
   };
 
 
-const formatTimeDisplay = (startTime?: string, endTime?: string) => {
+  const formatTimeDisplay = (startTime?: string, endTime?: string) => {
     if (!startTime) return "Not specified";
-    
+
     const formatTime = (timeString: string) => {
       const time = new Date(`2000-01-01T${timeString}`);
-      return time.toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
+      return time.toLocaleTimeString('en-US', {
+        hour: 'numeric',
         minute: '2-digit',
-        hour12: true 
+        hour12: true
       });
     };
 
     if (endTime) {
       return `${formatTime(startTime)} - ${formatTime(endTime)}`;
     }
-    
+
     return formatTime(startTime);
   };
 
 
   const calculateDuration = (startTime?: string, endTime?: string) => {
     if (!startTime || !endTime) return "";
-    
+
     const start = new Date(`2000-01-01T${startTime}`);
     const end = new Date(`2000-01-01T${endTime}`);
     const diffMs = end.getTime() - start.getTime();
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    
+
     if (diffHours > 0) {
       return `(${diffHours}h${diffMinutes > 0 ? ` ${diffMinutes}m` : ''})`;
     }
-    
+
     return `(${diffMinutes}m)`;
   };
 
   const mapApiEventToSchedule = (ev: any, projects: Project[]): ScheduleEvent => {
     const projectName = ev.project_name || "General";
-    
+
     const project = projects.find(p => p.id === ev.project_id);
     const projectColorClass = project?.color || "bg-gray-300";
 
-    
+
     const participants = ev.participants ?? ev.attendees_count ?? ev.guest_count ?? 0;
 
     return {
@@ -187,7 +188,7 @@ const formatTimeDisplay = (startTime?: string, endTime?: string) => {
       dateStart: ev.start_date,
       dateEnd: ev.end_date,
       allDay: ev.all_day || false,
-      participants: Number(participants), 
+      participants: Number(participants),
       project: projectName,
       projectColorClass,
     };
@@ -204,7 +205,7 @@ const formatTimeDisplay = (startTime?: string, endTime?: string) => {
 
     try {
       setIsLoading(true);
-      
+
       const userRes = await axiosClient.get("/me");
       setUser({
         name: userRes.data.full_name ?? userRes.data.email ?? "User",
@@ -302,85 +303,85 @@ const formatTimeDisplay = (startTime?: string, endTime?: string) => {
     return matchesFilter && matchesSearch;
   });
 
-const openEventModal = async (ev?: EventItem | null) => {
-  try {
-    if (ev?.id) {
-      // Fetch detail event dari API
-      const response = await axiosClient.get(`/events/${ev.id}`);
-      const eventDetails = response.data;
-      
-      console.log("Event details for editing:", eventDetails);
-      
-      // Format data untuk modal - GUNAKAN PROPERTY YANG SESUAI DENGAN TYPE
-      const eventData: EventItem = {
-        id: eventDetails.id,
-        title: eventDetails.title,
-        description: eventDetails.description || "",
-        dateStart: eventDetails.start_date, // GUNAKAN dateStart, BUKAN startDate
-        dateEnd: eventDetails.end_date || eventDetails.start_date, // GUNAKAN dateEnd, BUKAN endDate
-        startHour: eventDetails.start_time ? parseInt(eventDetails.start_time.split(':')[0]) : undefined,
-        startMinute: eventDetails.start_time ? parseInt(eventDetails.start_time.split(':')[1]) : undefined,
-        endHour: eventDetails.end_time ? parseInt(eventDetails.end_time.split(':')[0]) : undefined,
-        endMinute: eventDetails.end_time ? parseInt(eventDetails.end_time.split(':')[1]) : undefined,
-        allDay: eventDetails.all_day || false,
-        guest: eventDetails.guest || "",
-        location: eventDetails.location || "",
-        project: eventDetails.project_name || "",
-        projectId: eventDetails.project_id || null,
-      };
-      
-      setEditingEvent(eventData);
-      setOriginalEventData(eventData);
-    } else {
-      // Untuk event baru
-      const today = new Date().toISOString().split('T')[0];
-      setEditingEvent({
-        title: "",
-        description: "",
-        dateStart: today, // GUNAKAN dateStart
-        dateEnd: today, // GUNAKAN dateEnd
-        allDay: false,
-        guest: "",
-        location: "",
-        project: "",
-        projectId: null,
-      });
-      setOriginalEventData(null);
+  const openEventModal = async (ev?: EventItem | null) => {
+    try {
+      if (ev?.id) {
+        // Fetch detail event dari API
+        const response = await axiosClient.get(`/events/${ev.id}`);
+        const eventDetails = response.data;
+
+        console.log("Event details for editing:", eventDetails);
+
+        // Format data untuk modal - GUNAKAN PROPERTY YANG SESUAI DENGAN TYPE
+        const eventData: EventItem = {
+          id: eventDetails.id,
+          title: eventDetails.title,
+          description: eventDetails.description || "",
+          dateStart: eventDetails.start_date, // GUNAKAN dateStart, BUKAN startDate
+          dateEnd: eventDetails.end_date || eventDetails.start_date, // GUNAKAN dateEnd, BUKAN endDate
+          startHour: eventDetails.start_time ? parseInt(eventDetails.start_time.split(':')[0]) : undefined,
+          startMinute: eventDetails.start_time ? parseInt(eventDetails.start_time.split(':')[1]) : undefined,
+          endHour: eventDetails.end_time ? parseInt(eventDetails.end_time.split(':')[0]) : undefined,
+          endMinute: eventDetails.end_time ? parseInt(eventDetails.end_time.split(':')[1]) : undefined,
+          allDay: eventDetails.all_day || false,
+          guest: eventDetails.guest || "",
+          location: eventDetails.location || "",
+          project: eventDetails.project_name || "",
+          projectId: eventDetails.project_id || null,
+        };
+
+        setEditingEvent(eventData);
+        setOriginalEventData(eventData);
+      } else {
+        // Untuk event baru
+        const today = new Date().toISOString().split('T')[0];
+        setEditingEvent({
+          title: "",
+          description: "",
+          dateStart: today, // GUNAKAN dateStart
+          dateEnd: today, // GUNAKAN dateEnd
+          allDay: false,
+          guest: "",
+          location: "",
+          project: "",
+          projectId: null,
+        });
+        setOriginalEventData(null);
+      }
+      setModalOpen(true);
+      setHasUnsavedChanges(false);
+    } catch (error) {
+      console.error("Error loading event details:", error);
+
+      // Fallback
+      if (ev) {
+        const proj = projects.find((p) => p.name === ev.project);
+        const eventData: EventItem = {
+          ...ev,
+          project: ev.project ?? (proj?.name ?? ""),
+          projectId: proj?.id ?? ev.projectId ?? null,
+        };
+        setEditingEvent(eventData);
+        setOriginalEventData(eventData);
+      } else {
+        const today = new Date().toISOString().split('T')[0];
+        setEditingEvent({
+          title: "",
+          description: "",
+          dateStart: today,
+          dateEnd: today,
+          allDay: false,
+          guest: "",
+          location: "",
+          project: "",
+          projectId: null,
+        });
+        setOriginalEventData(null);
+      }
+      setModalOpen(true);
+      setHasUnsavedChanges(false);
     }
-    setModalOpen(true);
-    setHasUnsavedChanges(false);
-  } catch (error) {
-    console.error("Error loading event details:", error);
-    
-    // Fallback
-    if (ev) {
-      const proj = projects.find((p) => p.name === ev.project);
-      const eventData: EventItem = {
-        ...ev,
-        project: ev.project ?? (proj?.name ?? ""),
-        projectId: proj?.id ?? ev.projectId ?? null,
-      };
-      setEditingEvent(eventData);
-      setOriginalEventData(eventData);
-    } else {
-      const today = new Date().toISOString().split('T')[0];
-      setEditingEvent({
-        title: "",
-        description: "",
-        dateStart: today,
-        dateEnd: today,
-        allDay: false,
-        guest: "",
-        location: "",
-        project: "",
-        projectId: null,
-      });
-      setOriginalEventData(null);
-    }
-    setModalOpen(true);
-    setHasUnsavedChanges(false);
-  }
-};
+  };
 
   const closeModal = () => {
     if (hasUnsavedChanges) {
@@ -419,11 +420,11 @@ const openEventModal = async (ev?: EventItem | null) => {
         return;
       }
 
-      const config = { 
-        headers: { 
+      const config = {
+        headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
-        } 
+        }
       };
 
       const payload: any = {
@@ -440,7 +441,7 @@ const openEventModal = async (ev?: EventItem | null) => {
       };
 
       let response;
-      
+
       if (data.id) {
         response = await axiosClient.put(`/events/${data.id}`, payload, config);
       } else {
@@ -452,14 +453,14 @@ const openEventModal = async (ev?: EventItem | null) => {
       setEditingEvent(null);
       setOriginalEventData(null);
       setHasUnsavedChanges(false);
-      
+
       console.log("Event saved successfully:", response.data);
-      
+
     } catch (err: any) {
       console.error("Failed to save event:", err);
-      const errorMessage = err?.response?.data?.detail 
-        || err?.response?.data?.message 
-        || err?.message 
+      const errorMessage = err?.response?.data?.detail
+        || err?.response?.data?.message
+        || err?.message
         || "Gagal menyimpan event";
       alert(errorMessage);
     }
@@ -480,21 +481,21 @@ const openEventModal = async (ev?: EventItem | null) => {
 
   const confirmDeleteEvent = async () => {
     if (!eventToDelete) return;
-    
+
     try {
       const token = localStorage.getItem("access_token");
       const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
-      
+
       await axiosClient.delete(`/events/${eventToDelete}`, config);
       await reloadEvents();
-      
+
       setShowDeleteConfirm(false);
       setEventToDelete(null);
-      
+
     } catch (err: any) {
       console.error("Failed to delete event:", err);
-      const errorMessage = err?.response?.data?.detail 
-        || err?.response?.data?.message 
+      const errorMessage = err?.response?.data?.detail
+        || err?.response?.data?.message
         || "Gagal menghapus event";
       alert(errorMessage);
       setShowDeleteConfirm(false);
@@ -587,10 +588,10 @@ const openEventModal = async (ev?: EventItem | null) => {
                 Invited by:{" "}
                 <span className="text-gray-700 font-medium ">
                   {eventDetails.invitedBy ??
-                  eventDetails.invited_by ??
-                  eventDetails.organizer ??
-                  eventDetails.host ??
-                  "Unknown"}
+                    eventDetails.invited_by ??
+                    eventDetails.organizer ??
+                    eventDetails.host ??
+                    "Unknown"}
                 </span>
               </p>
             </div>
@@ -601,7 +602,7 @@ const openEventModal = async (ev?: EventItem | null) => {
               <div className="flex items-start gap-3">
                 <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
                   <img src="/date.svg" alt="Date" />
-                
+
                 </div>
                 <div>
                   <div className="text-sm text-gray-500">Date</div>
@@ -639,12 +640,12 @@ const openEventModal = async (ev?: EventItem | null) => {
                   <div className="text-gray-900 font-medium">
                     {formatTimeDisplay(
                       eventDetails.start_time ?? eventDetails.start_time_local ?? eventDetails.startTime,
-                      eventDetails.end_time   ?? eventDetails.end_time_local   ?? eventDetails.endTime
+                      eventDetails.end_time ?? eventDetails.end_time_local ?? eventDetails.endTime
                     )}
                     <span className="text-gray-500 ml-2">
                       {calculateDuration(
                         eventDetails.start_time ?? eventDetails.start_time_local ?? eventDetails.startTime,
-                        eventDetails.end_time   ?? eventDetails.end_time_local   ?? eventDetails.endTime
+                        eventDetails.end_time ?? eventDetails.end_time_local ?? eventDetails.endTime
                       )}
                     </span>
                   </div>
@@ -652,69 +653,69 @@ const openEventModal = async (ev?: EventItem | null) => {
               </div>
 
 
-      <div className="flex items-start gap-3">
-        <div className="flex-1">
+              <div className="flex items-start gap-3">
+                <div className="flex-1">
 
-          <div className="flex items-center gap-3">
-            <div className="flex -space-x-3">
-              {(() => {
-                const guestsArray = 
-                  eventDetails.guest_list && Array.isArray(eventDetails.guest_list) ? eventDetails.guest_list :
-                  eventDetails.guests && Array.isArray(eventDetails.guests) ? eventDetails.guests :
-                  eventDetails.attendees && Array.isArray(eventDetails.attendees) ? eventDetails.attendees :
-                  [];
-                
-                const totalParticipants = eventDetails.participants ?? guestsArray.length;
-                const displayGuests = guestsArray.slice(0, 3);
-                
-                return (
-                  <>
-                    {displayGuests.length > 0 ? (
-                      <>
-                        <div className="flex -space-x-3">
-                          {displayGuests.map((guest: { name: any; email: any; photo: any; }, index: Key | null | undefined) => {
-                            const guestName = typeof guest === 'string' ? guest : 
-                                            guest?.name ?? guest?.email ?? 'Guest';
-                            const guestPhoto = typeof guest === 'object' ? guest.photo : null;
-                            
-                            return (
-                              <div
-                                key={index}
-                                className="mr-2 w-[50px] h-[50px] rounded-full border-2 border-white bg-gray-100 flex items-center justify-center text-sm font-medium text-gray-800"
-                                style={{ boxShadow: "0 1px 0 rgba(0,0,0,0.04)" }}
-                                title={guestName}
-                              >
-                                {guestPhoto ? (
-                                  <img src={guestPhoto} className="w-full h-full rounded-full object-cover" alt={guestName} />
-                                ) : (
-                                  guestName.charAt(0).toUpperCase()
+                  <div className="flex items-center gap-3">
+                    <div className="flex -space-x-3">
+                      {(() => {
+                        const guestsArray =
+                          eventDetails.guest_list && Array.isArray(eventDetails.guest_list) ? eventDetails.guest_list :
+                            eventDetails.guests && Array.isArray(eventDetails.guests) ? eventDetails.guests :
+                              eventDetails.attendees && Array.isArray(eventDetails.attendees) ? eventDetails.attendees :
+                                [];
+
+                        const totalParticipants = eventDetails.participants ?? guestsArray.length;
+                        const displayGuests = guestsArray.slice(0, 3);
+
+                        return (
+                          <>
+                            {displayGuests.length > 0 ? (
+                              <>
+                                <div className="flex -space-x-3">
+                                  {displayGuests.map((guest: { name: any; email: any; photo: any; }, index: Key | null | undefined) => {
+                                    const guestName = typeof guest === 'string' ? guest :
+                                      guest?.name ?? guest?.email ?? 'Guest';
+                                    const guestPhoto = typeof guest === 'object' ? guest.photo : null;
+
+                                    return (
+                                      <div
+                                        key={index}
+                                        className="mr-2 w-[50px] h-[50px] rounded-full border-2 border-white bg-gray-100 flex items-center justify-center text-sm font-medium text-gray-800"
+                                        style={{ boxShadow: "0 1px 0 rgba(0,0,0,0.04)" }}
+                                        title={guestName}
+                                      >
+                                        {guestPhoto ? (
+                                          <img src={guestPhoto} className="w-full h-full rounded-full object-cover" alt={guestName} />
+                                        ) : (
+                                          guestName.charAt(0).toUpperCase()
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+
+
+                                {totalParticipants > 3 && (
+                                  <div className="ml-4 text-gray-700 font-medium items-center justify-center flex ">
+                                    +{totalParticipants - 3}
+                                  </div>
                                 )}
+                              </>
+                            ) : (
+                              <div className="text-gray-500 text-sm">
+                                {totalParticipants > 0 ? `${totalParticipants} participants` : 'No participants'}
                               </div>
-                            );
-                          })}
-                        </div>
-                        
-              
-                        {totalParticipants > 3 && (
-                          <div className="ml-4 text-gray-700 font-medium items-center justify-center flex ">
-                            +{totalParticipants - 3}
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <div className="text-gray-500 text-sm">
-                        {totalParticipants > 0 ? `${totalParticipants} participants` : 'No participants'}
-                      </div>
-                    )}
-                  </>
-                );
-              })()}
-            </div>
-          </div>
-        
-        
-        </div>
-      </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+
+
+                </div>
+              </div>
             </div>
 
             <div>
@@ -724,31 +725,14 @@ const openEventModal = async (ev?: EventItem | null) => {
               </p>
             </div>
 
-          
+
           </div>
         </div>
       )}
 
 
 
-      <div className="flex items-center justify-between bg-linear-to-r bg-white text-white px-6 py-4 rounded-[15px] shadow mb-[15px]">
-        <h2 className="text-2xl font-bold text-black">Schedule</h2>
-        <div className="flex items-center gap-4">
-          <img src="/notif-off.svg" alt="notification" />
-          <div className="flex items-center gap-3">
-             <img
-                    src={photo ?? fallback}
-                    alt={`${name} profile`}
-                    className="w-[59px] h-[59px] rounded-full object-cover  border-gray-200"
-                    onError={(e) => {
-                      const t = e.currentTarget as HTMLImageElement;
-                      t.onerror = null;
-                      t.src = fallback;
-                    }}
-                  />
-          </div>
-        </div>
-      </div>
+      <Header title="Schedule" />
 
       <div className="bg-white rounded-[15px] shadow p-6">
         <div className="flex items-center justify-end gap-4 mb-6">
@@ -806,7 +790,7 @@ const openEventModal = async (ev?: EventItem | null) => {
               className="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-md transition-shadow relative"
             >
               <div
-                className={`absolute left-0 top-0 bottom-0 w-1 mt-5 mb-5 ml-[15px]` }
+                className={`absolute left-0 top-0 bottom-0 w-1 mt-5 mb-5 ml-[15px]`}
                 style={{ backgroundColor: event.projectColorClass || '#6B7280' }}></div>
 
               <div className="flex items-center justify-between pl-3">
@@ -822,11 +806,11 @@ const openEventModal = async (ev?: EventItem | null) => {
                   </div>
 
                   <div className="flex items-center gap-2 justify-center ">
-                    <div className={`w-3 h-3 rounded-full `} style={{ backgroundColor: event.projectColorClass || '#6B7280' }}/>
+                    <div className={`w-3 h-3 rounded-full `} style={{ backgroundColor: event.projectColorClass || '#6B7280' }} />
                     <span className="text-sm text-gray-700 font-medium">{event.project}</span>
                   </div>
 
-                  <button 
+                  <button
                     className="px-4 py-2 text-sm font-medium text-blue-600 border border-blue-600 rounded-lg hover:bg-gray-50 transition-colors"
                     onClick={() => openEventDetails(event)}
                   >
@@ -901,30 +885,30 @@ const openEventModal = async (ev?: EventItem | null) => {
         initial={
           editingEvent
             ? {
-                id: editingEvent.id ? Number(editingEvent.id) : undefined,
-                title: editingEvent.title,
-                description: editingEvent.description || "",
-                startDate: editingEvent.dateStart || "",
-                endDate: editingEvent.dateEnd || "",
-                startTime:
-                  typeof editingEvent.startHour === "number"
-                    ? `${String(editingEvent.startHour).padStart(2, "0")}:${String(editingEvent.startMinute ?? 0).padStart(2, "0")}`
-                    : "",
-                endTime:
-                  typeof editingEvent.endHour === "number"
-                    ? `${String(editingEvent.endHour).padStart(2, "0")}:${String(editingEvent.endMinute ?? 0).padStart(2, "0")}`
-                    : "",
-                allDay: editingEvent.allDay || false,
-                guest: editingEvent.guest || "",
-                location: editingEvent.location || "",
-                projectId: editingEvent.projectId ?? undefined,
-                projectName: editingEvent.project || "",
-              }
+              id: editingEvent.id ? Number(editingEvent.id) : undefined,
+              title: editingEvent.title,
+              description: editingEvent.description || "",
+              startDate: editingEvent.dateStart || "",
+              endDate: editingEvent.dateEnd || "",
+              startTime:
+                typeof editingEvent.startHour === "number"
+                  ? `${String(editingEvent.startHour).padStart(2, "0")}:${String(editingEvent.startMinute ?? 0).padStart(2, "0")}`
+                  : "",
+              endTime:
+                typeof editingEvent.endHour === "number"
+                  ? `${String(editingEvent.endHour).padStart(2, "0")}:${String(editingEvent.endMinute ?? 0).padStart(2, "0")}`
+                  : "",
+              allDay: editingEvent.allDay || false,
+              guest: editingEvent.guest || "",
+              location: editingEvent.location || "",
+              projectId: editingEvent.projectId ?? undefined,
+              projectName: editingEvent.project || "",
+            }
             : null
         }
         onClose={closeModal}
         onSave={handleSaveFromModal}
-       
+
       />
     </div>
   );

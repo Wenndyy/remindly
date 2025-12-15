@@ -1,11 +1,18 @@
 from fastapi import FastAPI, Depends, HTTPException, Body, Request ,status
 from sqlalchemy.orm import Session,joinedload
 from app.database import SessionLocal, init_db
-from app.models import User, Event,Project
+from app.models import User, Event, Project, Notification
 from app.auth_utils import hash_password, verify_password, create_access_token, create_refresh_token, get_current_user, verify_token
-from .schemas import UserCreate, UserLogin, TokenResponse, ResetPasswordSchema, RegisterResponse, UserResponse, EventCreate, EventResponse,ProjectCreate, ProjectUpdate, ProjectResponse
+from .schemas import (
+    UserCreate, UserLogin, TokenResponse, ResetPasswordSchema, 
+    RegisterResponse, UserResponse, EventCreate, EventResponse,
+    ProjectCreate, ProjectUpdate, ProjectResponse,
+    NotificationResponse, NotificationCreate, UpcomingEventSummary, UpcomingTasksResponse
+)
+from app.ai_service import get_ai_service
 import time, secrets, json  
 from typing import List, Optional
+from datetime import datetime, timedelta
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -756,3 +763,267 @@ def list_users_for_suggestions(
         )
     users = q.order_by(User.full_name).limit(limit).all()
     return [UserResponse.from_orm(u) for u in users]
+
+
+# =============================================================================
+# NOTIFICATION ENDPOINTS - AI-Powered Reminders
+# =============================================================================
+
+@app.get("/notifications/upcoming", response_model=UpcomingTasksResponse)
+def get_upcoming_tasks_with_ai(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get upcoming events within 3 days with AI-generated reminder messages.
+    
+    This endpoint uses Mistral LLM to generate personalized reminders
+    for each upcoming event, plus an overall schedule summary.
+    
+    Returns:
+        UpcomingTasksResponse with AI-generated content
+    """
+    # Calculate date range (today + 3 days)
+    today = datetime.now().date()
+    three_days_later = today + timedelta(days=3)
+    
+    today_str = today.strftime("%Y-%m-%d")
+    three_days_str = three_days_later.strftime("%Y-%m-%d")
+    
+    # Query events in the date range
+    events = db.query(Event).options(
+        joinedload(Event.project)
+    ).filter(
+        Event.user_id == current_user.id,
+        Event.start_date >= today_str,
+        Event.start_date <= three_days_str
+    ).order_by(Event.start_date, Event.start_time).all()
+    
+    # Get AI service
+    ai_service = get_ai_service()
+    
+    # Build response with AI-generated reminders
+    upcoming_events = []
+    events_for_summary = []
+    
+    for event in events:
+        # Calculate days until event
+        event_date = datetime.strptime(event.start_date, "%Y-%m-%d").date()
+        days_until = (event_date - today).days
+        
+        # Generate AI reminder for this event
+        ai_reminder = ai_service.generate_reminder_message(
+            event_title=event.title,
+            event_date=event.start_date,
+            days_until=days_until,
+            event_time=event.start_time,
+            event_description=event.description,
+            project_name=event.project.name if event.project else None
+        )
+        
+        upcoming_events.append(UpcomingEventSummary(
+            event_id=event.id,
+            title=event.title,
+            start_date=event.start_date,
+            end_date=event.end_date,
+            start_time=event.start_time,
+            end_time=event.end_time,
+            days_until=days_until,
+            project_name=event.project.name if event.project else None,
+            ai_reminder=ai_reminder
+        ))
+        
+        events_for_summary.append({
+            "title": event.title,
+            "days_until": days_until
+        })
+    
+    # Generate overall AI summary
+    ai_summary = ai_service.generate_summary(events_for_summary)
+    
+    return UpcomingTasksResponse(
+        total_events=len(upcoming_events),
+        upcoming_events=upcoming_events,
+        ai_summary=ai_summary
+    )
+
+
+@app.get("/notifications", response_model=List[NotificationResponse])
+def get_notifications(
+    unread_only: bool = False,
+    limit: int = 20,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get all notifications for the current user.
+    
+    Args:
+        unread_only: If True, return only unread notifications
+        limit: Maximum number of notifications to return
+        
+    Returns:
+        List of NotificationResponse objects
+    """
+    query = db.query(Notification).options(
+        joinedload(Notification.event)
+    ).filter(
+        Notification.user_id == current_user.id
+    )
+    
+    if unread_only:
+        query = query.filter(Notification.is_read == False)
+    
+    notifications = query.order_by(Notification.created_at.desc()).limit(limit).all()
+    
+    result = []
+    for notif in notifications:
+        resp = NotificationResponse.from_orm(notif)
+        if notif.event:
+            resp.event_title = notif.event.title
+            resp.event_date = notif.event.start_date
+        result.append(resp)
+    
+    return result
+
+
+@app.get("/notifications/count")
+def get_unread_count(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get the count of unread notifications for the current user.
+    
+    Returns:
+        Dictionary with unread count
+    """
+    count = db.query(Notification).filter(
+        Notification.user_id == current_user.id,
+        Notification.is_read == False
+    ).count()
+    
+    return {"unread_count": count}
+
+
+@app.post("/notifications", response_model=NotificationResponse, status_code=status.HTTP_201_CREATED)
+def create_notification(
+    payload: NotificationCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Create a new notification for the current user.
+    
+    This can be used to manually create notifications or
+    by background jobs for automated reminders.
+    
+    Args:
+        payload: NotificationCreate schema with notification details
+        
+    Returns:
+        Created NotificationResponse
+    """
+    # Validate event_id if provided
+    if payload.event_id:
+        event = db.query(Event).filter(
+            Event.id == payload.event_id,
+            Event.user_id == current_user.id
+        ).first()
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found")
+    
+    new_notification = Notification(
+        user_id=current_user.id,
+        event_id=payload.event_id,
+        title=payload.title,
+        message=payload.message,
+        notification_type=payload.notification_type,
+        expires_at=payload.expires_at
+    )
+    
+    db.add(new_notification)
+    try:
+        db.commit()
+        db.refresh(new_notification)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"DB error: {str(e)}")
+    
+    return NotificationResponse.from_orm(new_notification)
+
+
+@app.patch("/notifications/{notification_id}/read")
+def mark_notification_as_read(
+    notification_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Mark a notification as read.
+    
+    Args:
+        notification_id: ID of the notification to mark as read
+        
+    Returns:
+        Success message
+    """
+    notification = db.query(Notification).filter(
+        Notification.id == notification_id,
+        Notification.user_id == current_user.id
+    ).first()
+    
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    
+    notification.is_read = True
+    db.commit()
+    
+    return {"msg": "Notification marked as read"}
+
+
+@app.patch("/notifications/read-all")
+def mark_all_notifications_as_read(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Mark all notifications as read for the current user.
+    
+    Returns:
+        Count of notifications marked as read
+    """
+    count = db.query(Notification).filter(
+        Notification.user_id == current_user.id,
+        Notification.is_read == False
+    ).update({"is_read": True})
+    
+    db.commit()
+    
+    return {"msg": f"{count} notifications marked as read"}
+
+
+@app.delete("/notifications/{notification_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_notification(
+    notification_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Delete a notification.
+    
+    Args:
+        notification_id: ID of the notification to delete
+    """
+    notification = db.query(Notification).filter(
+        Notification.id == notification_id,
+        Notification.user_id == current_user.id
+    ).first()
+    
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    
+    db.delete(notification)
+    db.commit()
+    
+    return

@@ -108,3 +108,56 @@ class ProjectUpdate(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# Notification Schemas
+class NotificationResponse(BaseModel):
+    """Response schema for notification data."""
+    id: int
+    user_id: int
+    event_id: Optional[int] = None
+    title: str
+    message: str
+    notification_type: str
+    is_read: bool
+    created_at: Optional[int] = None
+    expires_at: Optional[int] = None
+    
+    # Optional event details for context
+    event_title: Optional[str] = None
+    event_date: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class NotificationCreate(BaseModel):
+    """Schema for creating a new notification."""
+    event_id: Optional[int] = None
+    title: str
+    message: str
+    notification_type: str = "reminder"
+    expires_at: Optional[int] = None
+
+
+class UpcomingEventSummary(BaseModel):
+    """Schema for upcoming event with AI-generated summary."""
+    event_id: int
+    title: str
+    start_date: str
+    end_date: str
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    days_until: int
+    project_name: Optional[str] = None
+    ai_reminder: Optional[str] = None  # AI-generated reminder message
+    
+    class Config:
+        from_attributes = True
+
+
+class UpcomingTasksResponse(BaseModel):
+    """Response schema for AI-generated upcoming task reminders."""
+    total_events: int
+    upcoming_events: List[UpcomingEventSummary]
+    ai_summary: Optional[str] = None  # Overall AI summary of upcoming tasks

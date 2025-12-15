@@ -5,6 +5,7 @@ import MonthCalendarPreview from "../components/MonthCalendarPreview";
 import WeeklyCalendar, { EventItem } from "../components/WeeklyCalendar";
 import { useRouter } from "next/navigation";
 import TaskList from "../components/TaskList";
+import NotificationDropdown from "../components/NotificationDropdown";
 import axiosClient from "../api/axiosClient";
 
 
@@ -17,7 +18,7 @@ export default function DashboardContent({ initialUser = null }: { initialUser?:
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [user, setUser] = useState<UserShape>(initialUser);
   const [events, setEvents] = useState<EventItem[]>([]);
-  const [refreshTrigger, setRefreshTrigger] = useState(0); 
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const fetchEvents = async () => {
     const token = localStorage.getItem("access_token");
@@ -31,20 +32,20 @@ export default function DashboardContent({ initialUser = null }: { initialUser?:
       const mappedEvents: EventItem[] = eventRes.data.flatMap((e: any) => {
         const startDate = new Date(e.start_date);
         const endDate = new Date(e.end_date);
-        
+
         // Generate events untuk setiap hari dalam range
         const eventsInRange = [];
-        
+
         for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
           const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-          
+
           let startHour, startMinute, endHour, endMinute;
-          
+
           // Untuk hari pertama, gunakan waktu asli
           if (date.toDateString() === startDate.toDateString()) {
             const start = new Date(`${e.start_date}T${e.start_time ?? "00:00"}`);
             const end = new Date(`${e.end_date}T${e.end_time ?? "23:59"}`);
-            
+
             startHour = start.getHours();
             startMinute = start.getMinutes();
             endHour = end.getHours();
@@ -72,7 +73,7 @@ export default function DashboardContent({ initialUser = null }: { initialUser?:
             end_time: e.end_time,
             description: e.description,
             location: e.location,
-            project: e.project_name,       
+            project: e.project_name,
             project_color: e.project_color,
             guest: e.guest,
             isMultiDay: e.start_date !== e.end_date,
@@ -80,7 +81,7 @@ export default function DashboardContent({ initialUser = null }: { initialUser?:
             isLastDay: date.toDateString() === endDate.toDateString()
           });
         }
-        
+
         return eventsInRange;
       });
 
@@ -176,27 +177,27 @@ export default function DashboardContent({ initialUser = null }: { initialUser?:
             <h2 className="text-2xl font-bold text-black">Halo, {name}!</h2>
 
             <div className="flex items-center gap-4">
-              <img src="/notif-off.svg" alt="notification" />
+              <NotificationDropdown />
               <div className="flex items-center gap-3">
-                 <img
-                    src={photo ?? fallback}
-                    alt={`${name} profile`}
-                    className="w-[59px] h-[59px] rounded-full object-cover  border-gray-200"
-                    onError={(e) => {
-                      const t = e.currentTarget as HTMLImageElement;
-                      t.onerror = null;
-                      t.src = fallback;
-                    }}
-                  />
-                
+                <img
+                  src={photo ?? fallback}
+                  alt={`${name} profile`}
+                  className="w-[59px] h-[59px] rounded-full object-cover  border-gray-200"
+                  onError={(e) => {
+                    const t = e.currentTarget as HTMLImageElement;
+                    t.onerror = null;
+                    t.src = fallback;
+                  }}
+                />
+
               </div>
             </div>
           </div>
 
-          <WeeklyCalendar 
-            selectedDate={selectedDate} 
-            onDateSelect={setSelectedDate} 
-            initialEvents={events} 
+          <WeeklyCalendar
+            selectedDate={selectedDate}
+            onDateSelect={setSelectedDate}
+            initialEvents={events}
             onEventsChange={handleEventsChange}
           />
         </div>

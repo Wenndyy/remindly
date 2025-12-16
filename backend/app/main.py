@@ -890,29 +890,25 @@ def get_upcoming_tasks_with_ai(
     db: Session = Depends(get_db),
 ):
     """
-    Get upcoming events within 3 days with AI-generated reminder messages.
+    Get upcoming events for TODAY with AI-generated reminder messages.
     
     This endpoint uses Mistral LLM to generate personalized reminders
-    for each upcoming event, plus an overall schedule summary.
+    for each upcoming event scheduled for today.
     
     Returns:
         UpcomingTasksResponse with AI-generated content
     """
-    # Calculate date range (today + 3 days)
+    # Get today's date only
     today = datetime.now().date()
-    three_days_later = today + timedelta(days=3)
-    
     today_str = today.strftime("%Y-%m-%d")
-    three_days_str = three_days_later.strftime("%Y-%m-%d")
     
-    # Query events in the date range
+    # Query events for today only
     events = db.query(Event).options(
         joinedload(Event.project)
     ).filter(
         Event.user_id == current_user.id,
-        Event.start_date >= today_str,
-        Event.start_date <= three_days_str
-    ).order_by(Event.start_date, Event.start_time).all()
+        Event.start_date == today_str
+    ).order_by(Event.start_time).all()
     
     # Get AI service
     ai_service = get_ai_service()
@@ -945,6 +941,7 @@ def get_upcoming_tasks_with_ai(
             end_time=event.end_time,
             days_until=days_until,
             project_name=event.project.name if event.project else None,
+            location=event.location,
             ai_reminder=ai_reminder
         ))
         

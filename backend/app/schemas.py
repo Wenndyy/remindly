@@ -165,6 +165,7 @@ class UpcomingEventSummary(BaseModel):
     end_time: Optional[str] = None
     days_until: int
     project_name: Optional[str] = None
+    location: Optional[str] = None  # Event location for display
     ai_reminder: Optional[str] = None  # AI-generated reminder message
     
     class Config:

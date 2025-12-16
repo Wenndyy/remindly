@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import axiosClient from "../api/axiosClient";
 
 /**
- * Interface for upcoming event from AI-powered API
+ * Interface for upcoming event from API
  */
 interface UpcomingEvent {
     event_id: number;
@@ -16,6 +16,7 @@ interface UpcomingEvent {
     end_time: string | null;
     days_until: number;
     project_name: string | null;
+    location: string | null;
     ai_reminder: string | null;
 }
 
@@ -29,10 +30,19 @@ interface UpcomingTasksResponse {
 }
 
 /**
- * NotificationDropdown - AI-Powered Notification Component
+ * Get today's date key for localStorage
+ */
+const getTodayKey = (): string => {
+    const today = new Date();
+    return `notif_read_${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+};
+
+/**
+ * NotificationDropdown - Today's Schedule Notification Component
  * 
- * Displays upcoming tasks (within 3 days) with AI-generated reminders.
- * Shows a badge with count and a dropdown panel with notifications.
+ * Displays today's scheduled events with time and location.
+ * Shows a red bell icon and a clean dropdown panel with notifications.
+ * Supports Mark as Read / Mark as Unread toggle with localStorage persistence.
  */
 export default function NotificationDropdown() {
     const router = useRouter();
@@ -42,9 +52,27 @@ export default function NotificationDropdown() {
     const [loading, setLoading] = useState(false);
     const [upcomingData, setUpcomingData] = useState<UpcomingTasksResponse | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [markedAsRead, setMarkedAsRead] = useState(false);
 
     /**
-     * Fetch upcoming tasks with AI-generated reminders
+     * Check if already marked as read today (from localStorage)
+     */
+    const checkIfMarkedAsRead = (): boolean => {
+        if (typeof window === 'undefined') return false;
+        const todayKey = getTodayKey();
+        return localStorage.getItem(todayKey) === 'true';
+    };
+
+    /**
+     * Fetch today's schedule on mount
+     */
+    useEffect(() => {
+        setMarkedAsRead(checkIfMarkedAsRead());
+        fetchUpcomingTasks();
+    }, []);
+
+    /**
+     * Fetch today's schedule
      */
     const fetchUpcomingTasks = async () => {
         setLoading(true);
@@ -54,7 +82,7 @@ export default function NotificationDropdown() {
             const response = await axiosClient.get("/notifications/upcoming");
             setUpcomingData(response.data);
         } catch (err: any) {
-            console.error("Failed to fetch upcoming tasks:", err);
+            console.error("Failed to fetch today's schedule:", err);
             setError("Gagal memuat notifikasi");
         } finally {
             setLoading(false);
@@ -67,8 +95,51 @@ export default function NotificationDropdown() {
     const toggleDropdown = () => {
         if (!isOpen) {
             fetchUpcomingTasks();
+            setMarkedAsRead(checkIfMarkedAsRead());
         }
         setIsOpen(!isOpen);
+    };
+
+    /**
+     * Mark all as read - saves to localStorage
+     */
+    const handleMarkAllAsRead = async () => {
+        try {
+            await axiosClient.patch("/notifications/read-all");
+            const todayKey = getTodayKey();
+            localStorage.setItem(todayKey, 'true');
+            cleanupOldKeys();
+            setMarkedAsRead(true);
+        } catch (err) {
+            console.error("Failed to mark all as read:", err);
+        }
+    };
+
+    /**
+     * Mark as unread - removes from localStorage
+     */
+    const handleMarkAsUnread = () => {
+        const todayKey = getTodayKey();
+        localStorage.removeItem(todayKey);
+        setMarkedAsRead(false);
+    };
+
+    /**
+     * Clean up localStorage keys older than today
+     */
+    const cleanupOldKeys = () => {
+        if (typeof window === 'undefined') return;
+        const todayKey = getTodayKey();
+        const keysToRemove: string[] = [];
+
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith('notif_read_') && key !== todayKey) {
+                keysToRemove.push(key);
+            }
+        }
+
+        keysToRemove.forEach(key => localStorage.removeItem(key));
     };
 
     /**
@@ -86,50 +157,52 @@ export default function NotificationDropdown() {
     }, []);
 
     /**
-     * Get urgency color based on days until event
+     * Format time display (e.g., "13.00 - 15.00")
      */
-    const getUrgencyColor = (daysUntil: number): string => {
-        if (daysUntil === 0) return "bg-red-500";
-        if (daysUntil === 1) return "bg-orange-500";
-        return "bg-blue-500";
+    const formatTimeRange = (startTime: string | null, endTime: string | null): string => {
+        if (!startTime) return "";
+        const start = startTime.replace(":", ".");
+        if (!endTime) return start;
+        const end = endTime.replace(":", ".");
+        return `${start} - ${end}`;
     };
 
-    /**
-     * Get urgency label
-     */
-    const getUrgencyLabel = (daysUntil: number): string => {
-        if (daysUntil === 0) return "Hari Ini";
-        if (daysUntil === 1) return "Besok";
-        return `${daysUntil} hari lagi`;
-    };
-
-    /**
-     * Format time display
-     */
-    const formatTime = (time: string | null): string => {
-        if (!time) return "";
-        return time;
-    };
+    const hasNotifications = upcomingData && upcomingData.total_events > 0;
+    const todayCount = upcomingData?.total_events || 0;
 
     return (
         <div className="relative" ref={dropdownRef}>
             {/* Bell Icon Button */}
             <button
                 onClick={toggleDropdown}
-                className="relative p-2 rounded-full hover:bg-gray-100 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="relative p-1 rounded-full hover:bg-gray-100 transition-colors duration-200 focus:outline-none"
                 aria-label="Notifications"
                 id="notification-bell-button"
             >
-                <img
-                    src={upcomingData && upcomingData.total_events > 0 ? "/notification.svg" : "/notif-off.svg"}
-                    alt="notification"
-                    className="w-6 h-6"
-                />
+                <svg
+                    width="28"
+                    height="28"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="drop-shadow-sm"
+                >
+                    <defs>
+                        <linearGradient id="bellGradient" x1="12" y1="2" x2="12" y2="22" gradientUnits="userSpaceOnUse">
+                            <stop stopColor={hasNotifications && !markedAsRead ? "#DC2626" : "#9CA3AF"} />
+                            <stop offset="1" stopColor={hasNotifications && !markedAsRead ? "#7F1D1D" : "#6B7280"} />
+                        </linearGradient>
+                    </defs>
+                    <path
+                        d="M12 2C10.9 2 10 2.9 10 4V4.29C7.03 5.17 5 7.9 5 11V17L3 19V20H21V19L19 17V11C19 7.9 16.97 5.17 14 4.29V4C14 2.9 13.1 2 12 2ZM12 22C10.9 22 10 21.1 10 20H14C14 21.1 13.1 22 12 22Z"
+                        fill="url(#bellGradient)"
+                    />
+                </svg>
 
-                {/* Badge - Show count of upcoming events */}
-                {upcomingData && upcomingData.total_events > 0 && (
-                    <span className="absolute -top-1 -right-1 flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-red-500 rounded-full animate-pulse">
-                        {upcomingData.total_events > 9 ? "9+" : upcomingData.total_events}
+                {/* Badge */}
+                {hasNotifications && !markedAsRead && (
+                    <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center w-4 h-4 text-[10px] font-bold text-white bg-red-500 rounded-full border-2 border-white">
+                        {todayCount > 9 ? "9+" : todayCount}
                     </span>
                 )}
             </button>
@@ -137,110 +210,102 @@ export default function NotificationDropdown() {
             {/* Dropdown Panel */}
             {isOpen && (
                 <div
-                    className="absolute right-0 mt-2 w-96 bg-white rounded-xl shadow-2xl border border-gray-100 z-50 overflow-hidden"
+                    className="absolute right-0 mt-3 w-[380px] bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden"
                     id="notification-dropdown-panel"
+                    style={{ boxShadow: '0 10px 40px rgba(0,0,0,0.1)' }}
                 >
+                    {/* Speech bubble pointer */}
+                    <div className="absolute -top-2 right-6 w-4 h-4 bg-white transform rotate-45 border-l border-t border-gray-100"></div>
+
                     {/* Header */}
-                    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3">
-                        <h3 className="text-white font-semibold text-lg flex items-center gap-2">
-                            <span>🔔</span> Pengingat AI
-                        </h3>
-                        <p className="text-blue-100 text-sm">Tugas dalam 3 hari ke depan</p>
+                    <div className="px-5 pt-5 pb-3 flex items-center justify-between">
+                        <div>
+                            <h3 className="text-xl font-bold text-gray-900">Notification</h3>
+                            {todayCount > 0 && (
+                                <p className="text-sm text-gray-500 mt-0.5">
+                                    You have {todayCount} meeting{todayCount > 1 ? 's' : ''} today
+                                </p>
+                            )}
+                        </div>
+
+                        {/* Toggle Button: Mark as Read / Mark as Unread */}
+                        {hasNotifications && (
+                            markedAsRead ? (
+                                <button
+                                    onClick={handleMarkAsUnread}
+                                    className="text-sm text-blue-500 hover:text-blue-700 transition-colors"
+                                >
+                                    Mark as unread
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={handleMarkAllAsRead}
+                                    className="text-sm text-gray-400 hover:text-red-600 transition-colors"
+                                >
+                                    Mark all as read
+                                </button>
+                            )
+                        )}
                     </div>
 
                     {/* Content */}
-                    <div className="max-h-96 overflow-y-auto">
+                    <div className="px-5 pb-5 max-h-80 overflow-y-auto">
                         {loading ? (
                             <div className="flex items-center justify-center py-8">
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                                <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 border-t-red-500"></div>
                             </div>
                         ) : error ? (
-                            <div className="p-4 text-center text-red-500">
-                                <p>{error}</p>
+                            <div className="py-6 text-center">
+                                <p className="text-gray-500 text-sm">{error}</p>
                                 <button
                                     onClick={fetchUpcomingTasks}
-                                    className="mt-2 text-sm text-blue-600 hover:underline"
+                                    className="mt-2 text-sm text-red-600 hover:underline"
                                 >
                                     Coba lagi
                                 </button>
                             </div>
-                        ) : upcomingData && upcomingData.total_events > 0 ? (
-                            <>
-                                {/* AI Summary */}
-                                {upcomingData.ai_summary && (
-                                    <div className="px-4 py-3 bg-gradient-to-r from-purple-50 to-blue-50 border-b border-gray-100">
-                                        <p className="text-sm text-gray-700 leading-relaxed">
-                                            {upcomingData.ai_summary}
-                                        </p>
-                                    </div>
-                                )}
-
-                                {/* Event List */}
-                                <div className="divide-y divide-gray-100">
-                                    {upcomingData.upcoming_events.map((event) => (
-                                        <div
-                                            key={event.event_id}
-                                            className="p-4 hover:bg-gray-50 transition-colors duration-150 cursor-pointer"
-                                            onClick={() => {
-                                                setIsOpen(false);
-                                                router.push(`/calendar?event=${event.event_id}`);
-                                            }}
-                                        >
-                                            <div className="flex items-start gap-3">
-                                                {/* Urgency Indicator */}
-                                                <div className={`w-1 h-full min-h-[60px] rounded-full ${getUrgencyColor(event.days_until)}`}></div>
-
-                                                <div className="flex-1 min-w-0">
-                                                    {/* Event Title & Time */}
-                                                    <div className="flex items-center justify-between gap-2">
-                                                        <h4 className="font-medium text-gray-900 truncate">
-                                                            {event.title}
-                                                        </h4>
-                                                        <span className={`text-xs px-2 py-0.5 rounded-full text-white ${getUrgencyColor(event.days_until)}`}>
-                                                            {getUrgencyLabel(event.days_until)}
-                                                        </span>
-                                                    </div>
-
-                                                    {/* Date & Time */}
-                                                    <p className="text-xs text-gray-500 mt-1">
-                                                        📅 {event.start_date}
-                                                        {event.start_time && <span> • ⏰ {formatTime(event.start_time)}</span>}
-                                                        {event.project_name && <span> • 📁 {event.project_name}</span>}
-                                                    </p>
-
-                                                    {/* AI Reminder Message */}
-                                                    {event.ai_reminder && (
-                                                        <p className="text-sm text-gray-600 mt-2 bg-gray-50 rounded-lg p-2 border-l-2 border-blue-400">
-                                                            {event.ai_reminder}
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            </div>
+                        ) : hasNotifications ? (
+                            <div className="space-y-3">
+                                {upcomingData.upcoming_events.map((event) => (
+                                    <div
+                                        key={event.event_id}
+                                        className="p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer"
+                                        onClick={() => {
+                                            setIsOpen(false);
+                                            router.push(`/calendar?event=${event.event_id}`);
+                                        }}
+                                    >
+                                        {/* Time & Location */}
+                                        <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
+                                            <span>{formatTimeRange(event.start_time, event.end_time)}</span>
+                                            {event.location && (
+                                                <>
+                                                    <span className="text-gray-300">•</span>
+                                                    <span>{event.location}</span>
+                                                </>
+                                            )}
+                                            {!event.location && event.project_name && (
+                                                <>
+                                                    <span className="text-gray-300">•</span>
+                                                    <span>{event.project_name}</span>
+                                                </>
+                                            )}
                                         </div>
-                                    ))}
-                                </div>
-                            </>
+
+                                        {/* Event Title */}
+                                        <span className="text-sm font-semibold text-gray-900 hover:text-red-600 transition-colors">
+                                            {event.title}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
                         ) : (
-                            <div className="p-8 text-center">
-                                <div className="text-4xl mb-2">✨</div>
-                                <p className="text-gray-600">Tidak ada tugas dalam 3 hari ke depan</p>
-                                <p className="text-sm text-gray-400 mt-1">Waktu santai!</p>
+                            <div className="py-8 text-center">
+                                <div className="text-4xl mb-3">🎉</div>
+                                <p className="text-gray-600 font-medium">No meetings today</p>
+                                <p className="text-sm text-gray-400 mt-1">Enjoy your free time!</p>
                             </div>
                         )}
-                    </div>
-
-                    {/* Footer */}
-                    <div className="border-t border-gray-100 p-3 bg-gray-50">
-                        <button
-                            onClick={() => {
-                                setIsOpen(false);
-                                router.push("/notification");
-                            }}
-                            className="w-full text-center text-sm text-blue-600 hover:text-blue-800 font-medium transition-colors"
-                            id="view-all-notifications-button"
-                        >
-                            Lihat semua notifikasi →
-                        </button>
                     </div>
                 </div>
             )}

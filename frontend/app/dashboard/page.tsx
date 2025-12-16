@@ -86,14 +86,18 @@ export default function DashboardContent({ initialUser = null }: { initialUser?:
         return eventsInRange;
       });
 
-      // Filter untuk 7 hari ke depan
+      // Filter untuk 7 hari ke depan (reset waktu ke 00:00:00 untuk perbandingan yang benar)
       const today = new Date();
+      today.setHours(0, 0, 0, 0); // Reset ke awal hari
+
       const sevenDaysLater = new Date();
       sevenDaysLater.setDate(today.getDate() + 7);
+      sevenDaysLater.setHours(23, 59, 59, 999); // Set ke akhir hari
 
       const upcomingEvents = mappedEvents
         .filter(ev => {
           const eventDate = new Date(ev.date);
+          eventDate.setHours(0, 0, 0, 0); // Reset waktu event juga
           return eventDate >= today && eventDate <= sevenDaysLater;
         })
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());

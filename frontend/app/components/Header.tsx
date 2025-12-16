@@ -31,17 +31,8 @@ export default function Header({ title }: HeaderProps) {
             <h2 className="text-2xl font-bold text-black">{title}</h2>
 
             <div className="flex items-center gap-4">
-                {/* Notification Icon (using the existing component or image for now) */}
-                {/* Using NotificationDropdown if it exists in components, as seen in dashboard */}
-                {/* <NotificationDropdown /> or just the image if the user wants strictly visual match first */}
-                {/* Dashboard uses NotificationDropdown. Calendar uses <img>. I'll use simple img for now to match Calendar request, or Dropdown if available. */}
-                {/* Dashboard import: import NotificationDropdown from "../components/NotificationDropdown"; */}
-                {/* I'll use a placeholder img if Dropdown is too complex, but Dashboard has it. Let's try to use the image for consistency with Calendar request "icon notifikasi (lonceng)". */}
-                <img
-                    src="/notif-off.svg"
-                    alt="notification"
-                    className="w-6 h-6 cursor-pointer hover:opacity-80 transition"
-                />
+                {/* Notification Dropdown Component */}
+                <NotificationDropdown />
 
                 <Link href="/profile" className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition">
                     {user?.profile_picture ? (

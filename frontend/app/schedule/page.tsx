@@ -6,6 +6,7 @@ import axiosClient from "../api/axiosClient";
 
 import EventModal, { EventForm } from "../components/EventModal";
 import Header from "../components/Header";
+import { EventForConflictCheck } from "../utils/conflictDetection";
 
 type UserShape = { photoURL?: string | null; name?: string | null } | null;
 
@@ -14,6 +15,8 @@ type ScheduleEvent = {
   title: string;
   dateStart: string;
   dateEnd?: string;
+  startTime?: string;
+  endTime?: string;
   allDay?: boolean;
   participants: number;
   project: string;
@@ -35,6 +38,7 @@ export type EventItem = {
   description?: string;
   guest?: string;
   location?: string;
+  meetingType?: "onsite" | "online";
   project?: string;
   projectId?: number | null;
   projectColor?: string;
@@ -187,6 +191,8 @@ export default function TaskPage({
       title: ev.title,
       dateStart: ev.start_date,
       dateEnd: ev.end_date,
+      startTime: ev.start_time || '',
+      endTime: ev.end_time || '',
       allDay: ev.all_day || false,
       participants: Number(participants),
       project: projectName,
@@ -266,6 +272,7 @@ export default function TaskPage({
         end_time: raw.end_time,
         all_day: raw.all_day,
         location: raw.location,
+        meeting_type: raw.meeting_type,
         participants: raw.participants,
         guest_list: raw.guest_list || [],
         invitedBy: raw.organizer_name || raw.organizer_email,
@@ -326,6 +333,7 @@ export default function TaskPage({
           allDay: eventDetails.all_day || false,
           guest: eventDetails.guest || "",
           location: eventDetails.location || "",
+          meetingType: eventDetails.meeting_type || "onsite",
           project: eventDetails.project_name || "",
           projectId: eventDetails.project_id || null,
         };
@@ -343,6 +351,7 @@ export default function TaskPage({
           allDay: false,
           guest: "",
           location: "",
+          meetingType: "onsite",
           project: "",
           projectId: null,
         });
@@ -437,6 +446,7 @@ export default function TaskPage({
         all_day: data.allDay || false,
         guest: data.guest?.trim() || null,
         location: data.location?.trim() || null,
+        meeting_type: data.meetingType || "onsite",
         project_id: data.projectId || null,
       };
 
@@ -626,6 +636,24 @@ export default function TaskPage({
                   <div className="text-sm text-gray-500">Location</div>
                   <div className="text-gray-900 font-medium">
                     {eventDetails.location ?? eventDetails.venue ?? "Not specified"}
+                  </div>
+                </div>
+              </div>
+
+              {/* Meeting Type */}
+              <div className="flex items-start gap-3">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${eventDetails.meeting_type === 'online' ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'
+                  }`}>
+                  {eventDetails.meeting_type === 'online' ? (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                  )}
+                </div>
+                <div>
+                  <div className="text-sm text-gray-500">Meeting Type</div>
+                  <div className="text-gray-900 font-medium capitalize">
+                    {eventDetails.meeting_type || "Onsite"}
                   </div>
                 </div>
               </div>
@@ -901,6 +929,7 @@ export default function TaskPage({
               allDay: editingEvent.allDay || false,
               guest: editingEvent.guest || "",
               location: editingEvent.location || "",
+              meetingType: editingEvent.meetingType || "onsite",
               projectId: editingEvent.projectId ?? undefined,
               projectName: editingEvent.project || "",
             }
@@ -908,7 +937,15 @@ export default function TaskPage({
         }
         onClose={closeModal}
         onSave={handleSaveFromModal}
-
+        existingEvents={events.map((ev): EventForConflictCheck => ({
+          id: ev.id,
+          startDate: ev.dateStart,
+          endDate: ev.dateEnd,
+          startTime: ev.startTime || '',
+          endTime: ev.endTime || '',
+          title: ev.title,
+          allDay: ev.allDay,
+        }))}
       />
     </div>
   );

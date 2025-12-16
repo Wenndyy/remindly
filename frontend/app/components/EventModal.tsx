@@ -4,6 +4,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import axiosClient from "../api/axiosClient";
 import Toast, { useToast } from "./Toast";
+import { checkTimeConflict, validateTimeOrder, EventForConflictCheck, ConflictResult } from "../utils/conflictDetection";
 
 export type EventForm = {
   id?: number;
@@ -16,6 +17,7 @@ export type EventForm = {
   allDay: boolean;
   guest: string;
   location: string;
+  meetingType: "onsite" | "online";
   projectId?: number | null;
   projectName?: string;
 };
@@ -48,11 +50,13 @@ export default function EventModal({
   initial,
   onClose,
   onSave,
+  existingEvents = [],
 }: {
   open: boolean;
   initial?: Partial<EventForm> | null;
   onClose: () => void;
   onSave: (data: EventForm) => void;
+  existingEvents?: EventForConflictCheck[];
 }) {
   const empty: EventForm = {
     title: "",
@@ -64,6 +68,7 @@ export default function EventModal({
     allDay: false,
     guest: "",
     location: "",
+    meetingType: "onsite",
     projectId: undefined,
     projectName: "",
   };
@@ -89,6 +94,15 @@ export default function EventModal({
   const projRef = useRef<HTMLDivElement | null>(null);
 
   const [discardOpen, setDiscardOpen] = useState(false);
+
+  // Conflict detection state
+  const [conflictError, setConflictError] = useState<string | null>(null);
+
+  // AI Reminder suggestion state
+  const [reminderSuggestions, setReminderSuggestions] = useState<{ label: string; minutes_before: number }[]>([]);
+  const [reminderLoading, setReminderLoading] = useState(false);
+  const [selectedReminder, setSelectedReminder] = useState<number | null>(null);
+  const [reminderReasoning, setReminderReasoning] = useState<string | null>(null);
 
   // Toast for success/error feedback
   const { toast, showToast, hideToast } = useToast();
@@ -148,6 +162,7 @@ export default function EventModal({
         ...initial,
         projectId: (initial as any).projectId ?? (initial as any).project_id ?? undefined,
         projectName: (initial as any).projectName ?? (initial as any).project ?? "",
+        meetingType: (initial as any).meetingType ?? (initial as any).meeting_type ?? "onsite",
       }));
       if ((initial as any).guest) {
         const emails = (initial as any).guest
@@ -235,6 +250,43 @@ export default function EventModal({
     return t1.localeCompare(t2) === -1;
   }
 
+  // Fetch AI-powered reminder suggestions
+  async function fetchReminderSuggestions() {
+    if (!form.title || !form.startDate) {
+      showToast("Please enter a title and date first", "error");
+      return;
+    }
+
+    setReminderLoading(true);
+    setReminderSuggestions([]);
+    setSelectedReminder(null);
+    setReminderReasoning(null);
+
+    try {
+      const token = localStorage.getItem("access_token");
+      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+
+      const response = await axiosClient.post("/ai/suggest-reminders", {
+        task_title: form.title,
+        task_date: form.startDate,
+        ...(form.startTime && { task_time: form.startTime }),
+        ...(form.projectName && { task_type: form.projectName })
+      }, config);
+
+      const data = response.data;
+      if (data.suggestions && data.suggestions.length > 0) {
+        setReminderSuggestions(data.suggestions);
+        setReminderReasoning(data.reasoning_summary || null);
+      } else {
+        showToast("No suggestions available", "error");
+      }
+    } catch (error) {
+      console.error("Failed to fetch reminder suggestions:", error);
+      showToast("AI service unavailable", "error");
+    } finally {
+      setReminderLoading(false);
+    }
+  }
 
   async function handleSave() {
     // Get fresh date/time values at save time to avoid stale comparisons
@@ -295,6 +347,35 @@ export default function EventModal({
         alert("End time cannot be earlier than start time");
         return;
       }
+
+      // Validate end time is strictly after start time (not equal)
+      const timeOrderError = validateTimeOrder(form.startTime, form.endTime);
+      if (timeOrderError) {
+        setConflictError(timeOrderError);
+        return;
+      }
+
+      // Check for schedule conflicts with existing events
+      const conflictCheck = checkTimeConflict(
+        {
+          id: initial?.id,
+          startDate: form.startDate,
+          startTime: form.startTime,
+          endTime: form.endTime,
+          title: form.title,
+          allDay: form.allDay,
+        },
+        existingEvents,
+        initial?.id ? String(initial.id) : undefined
+      );
+
+      if (conflictCheck.hasConflict) {
+        setConflictError(conflictCheck.message || "Time conflict detected");
+        return;
+      }
+
+      // Clear conflict error if validation passes
+      setConflictError(null);
     }
 
     const payload: any = {
@@ -307,6 +388,7 @@ export default function EventModal({
       all_day: form.allDay,
       guest: selectedGuests.map((g) => g.email).join(","),
       location: form.location,
+      meeting_type: form.meetingType,
     };
 
     if (form.projectId) payload.project_id = form.projectId;
@@ -334,6 +416,7 @@ export default function EventModal({
         allDay: data.all_day ?? form.allDay,
         guest: data.guest ?? selectedGuests.map((g) => g.email).join(","),
         location: data.location ?? form.location,
+        meetingType: data.meeting_type ?? form.meetingType ?? "onsite",
         projectId: data.project_id ?? form.projectId ?? null,
         projectName: data.project_name ?? form.projectName ?? "",
       };
@@ -439,7 +522,10 @@ export default function EventModal({
                     type="date"
                     value={form.startDate}
                     min={todayStr}
-                    onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+                    onChange={(e) => {
+                      setForm({ ...form, startDate: e.target.value });
+                      setConflictError(null); // Clear conflict error on date change
+                    }}
                     className="w-full border rounded-xl px-2 py-2 text-sm text-[#55565B]"
                   />
                 </div>
@@ -450,8 +536,11 @@ export default function EventModal({
                     <input
                       type="time"
                       value={form.startTime}
-                      onChange={(e) => setForm({ ...form, startTime: e.target.value })}
-                      className="border rounded-xl px-2 py-2 text-sm text-[#55565B]"
+                      onChange={(e) => {
+                        setForm({ ...form, startTime: e.target.value });
+                        setConflictError(null); // Clear conflict error on time change
+                      }}
+                      className={`border rounded-xl px-2 py-2 text-sm text-[#55565B] ${conflictError ? "border-red-500" : ""}`}
                       style={{ width: 120 }}
                     />
                     <span className="mx-3 text-sm text-[#888]" aria-hidden>—</span>
@@ -460,8 +549,11 @@ export default function EventModal({
                         type="time"
                         value={form.endTime}
                         min={form.startTime}
-                        onChange={(e) => setForm({ ...form, endTime: e.target.value })}
-                        className={`border rounded-xl px-2 py-2 text-sm text-[#55565B] ${form.endTime && form.startTime && form.endTime < form.startTime
+                        onChange={(e) => {
+                          setForm({ ...form, endTime: e.target.value });
+                          setConflictError(null); // Clear conflict error on time change
+                        }}
+                        className={`border rounded-xl px-2 py-2 text-sm text-[#55565B] ${(form.endTime && form.startTime && form.endTime < form.startTime) || conflictError
                           ? "border-red-500"
                           : ""
                           }`}
@@ -473,9 +565,14 @@ export default function EventModal({
                           End time cannot be earlier than start time
                         </span>
                       )}
+
+                      {/* Conflict error display */}
+                      {conflictError && (
+                        <span className="text-red-500 text-xs mt-1">
+                          {conflictError}
+                        </span>
+                      )}
                     </div>
-
-
                   </div>
                 </div>
               </div>
@@ -519,6 +616,64 @@ export default function EventModal({
                 </div>
                 <span className="ml-3 text-sm text-[#55565B]">All Day</span>
               </label>
+            </div>
+
+            {/* AI Reminder Suggestions */}
+            <div className="mb-4">
+              <div className="flex items-center gap-2 mb-2">
+                <button
+                  type="button"
+                  onClick={fetchReminderSuggestions}
+                  disabled={reminderLoading || !form.title || !form.startDate}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gradient-to-r from-blue-500 to-indigo-500 text-white hover:from-blue-600 hover:to-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  {reminderLoading ? (
+                    <>
+                      <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Suggesting...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                      </svg>
+                      Suggest Reminder
+                    </>
+                  )}
+                </button>
+                {selectedReminder !== null && (
+                  <span className="text-xs text-green-600 flex items-center gap-1">
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Reminder set
+                  </span>
+                )}
+              </div>
+
+              {/* Suggestion chips */}
+              {reminderSuggestions.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    {reminderSuggestions.map((s, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setSelectedReminder(s.minutes_before)}
+                        className={`px-3 py-1.5 text-xs rounded-full border transition-all ${selectedReminder === s.minutes_before
+                          ? "bg-[#B6252A] text-white border-[#B6252A]"
+                          : "bg-white text-gray-600 border-gray-300 hover:border-[#B6252A] hover:text-[#B6252A]"
+                          }`}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                  {reminderReasoning && (
+                    <p className="text-xs text-gray-500 italic">{reminderReasoning}</p>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Guest input + suggestions */}
@@ -599,6 +754,50 @@ export default function EventModal({
               />
             </div>
 
+            {/* Meeting Type */}
+            <div className="mb-4">
+              <label className="block text-xs text-[#55565B] mb-1">Meeting Type</label>
+              <div className="flex gap-3">
+                <label className="flex items-center cursor-pointer">
+                  <input
+                    type="radio"
+                    name="meetingType"
+                    value="onsite"
+                    checked={form.meetingType === "onsite"}
+                    onChange={() => setForm({ ...form, meetingType: "onsite" })}
+                    className="sr-only"
+                  />
+                  <div className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all ${form.meetingType === "onsite"
+                      ? "border-[#B6252A] bg-[#B6252A]/5 text-[#B6252A]"
+                      : "border-gray-300 text-gray-600 hover:border-gray-400"
+                    }`}>
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
+                    <span className="text-sm font-medium">Onsite</span>
+                  </div>
+                </label>
+                <label className="flex items-center cursor-pointer">
+                  <input
+                    type="radio"
+                    name="meetingType"
+                    value="online"
+                    checked={form.meetingType === "online"}
+                    onChange={() => setForm({ ...form, meetingType: "online" })}
+                    className="sr-only"
+                  />
+                  <div className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all ${form.meetingType === "online"
+                      ? "border-[#B6252A] bg-[#B6252A]/5 text-[#B6252A]"
+                      : "border-gray-300 text-gray-600 hover:border-gray-400"
+                    }`}>
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    <span className="text-sm font-medium">Online</span>
+                  </div>
+                </label>
+              </div>
+            </div>
 
             <div className="mb-6">
               <label className="block text-xs text-[#55565B] mb-1">Project</label>
@@ -686,7 +885,7 @@ export default function EventModal({
             <button onClick={handleSave} className="text-sm px-3 py-1" style={{ background: "#B6252A", color: "#fff", borderRadius: 6 }}>Save</button>
           </div>
         </div>
-      </div>
+      </div >
 
       {discardOpen && (
         <div className="fixed inset-0 z-60 flex items-center justify-center p-6">
@@ -704,7 +903,8 @@ export default function EventModal({
             </div>
           </div>
         </div>
-      )}
+      )
+      }
 
       {/* Toast notification */}
       <Toast

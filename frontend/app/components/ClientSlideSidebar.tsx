@@ -2,6 +2,8 @@
 
 import dynamic from "next/dynamic";
 import React from "react";
+import FloatingAIChat from "./FloatingAIChat";
+import { ChatProvider } from "../../contexts/ChatContext";
 
 // Dynamically import SlideSidebar with SSR disabled to prevent hydration mismatch
 // SlideSidebar uses localStorage, usePathname, and other client-only APIs
@@ -16,5 +18,10 @@ const SlideSidebar = dynamic(() => import("./SlideSidebar"), {
 });
 
 export default function ClientSlideSidebar({ children }: { children: React.ReactNode }) {
-    return <SlideSidebar>{children}</SlideSidebar>;
+    return (
+        <ChatProvider>
+            <SlideSidebar>{children}</SlideSidebar>
+            <FloatingAIChat />
+        </ChatProvider>
+    );
 }

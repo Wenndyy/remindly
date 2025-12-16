@@ -35,7 +35,6 @@ export default function SlideSidebar({ children }: { children: React.ReactNode }
     { key: "calendar", label: "Calendar", src: "/calender.svg", href: "/calendar" },
     { key: "schedule", label: "Schedule", src: "/task.svg", href: "/schedule" },
     { key: "project", label: "Project", src: "/project.svg", href: "/project" },
-
   ];
 
   // Don't render anything until mounted to prevent hydration mismatch

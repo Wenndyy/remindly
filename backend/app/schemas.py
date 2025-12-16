@@ -61,6 +61,7 @@ class EventCreate(BaseModel):
     all_day: bool = False
     guest: Optional[str] = None
     location: Optional[str] = None
+    meeting_type: Optional[str] = "onsite"  # 'onsite' or 'online'
     project_id: Optional[int] = None 
 
     class Config:
@@ -77,6 +78,7 @@ class EventResponse(BaseModel):
     all_day: bool
     guest: Optional[str]
     location: Optional[str]
+    meeting_type: Optional[str] = None  # 'onsite' or 'online'
     project_id: Optional[int]
     user_id: int
     created_at: Optional[int] = None
@@ -177,3 +179,91 @@ class UpcomingTasksResponse(BaseModel):
     total_events: int
     upcoming_events: List[UpcomingEventSummary]
     ai_summary: Optional[str] = None  # Overall AI summary of upcoming tasks
+
+
+# =============================================================================
+# AI CHAT SCHEMAS
+# =============================================================================
+
+class ChatMessage(BaseModel):
+    """Single chat message in conversation history."""
+    role: str  # 'user' or 'assistant'
+    content: str
+
+
+class AIChatRequest(BaseModel):
+    """Request schema for AI chat endpoint."""
+    message: str
+    conversation_history: Optional[List[ChatMessage]] = None
+    timezone: Optional[str] = "Asia/Jakarta"
+
+
+class ScheduleItem(BaseModel):
+    """Single schedule item in a proposal."""
+    title: str
+    date: str
+    start_time: str
+    end_time: str
+    notes: Optional[str] = None
+    category: Optional[str] = None
+
+
+class ScheduleProposal(BaseModel):
+    """Schedule proposal from AI."""
+    title: Optional[str] = "Schedule Proposal"
+    timezone: Optional[str] = "Asia/Jakarta"
+    items: List[ScheduleItem]
+
+
+class AIChatResponse(BaseModel):
+    """Response schema for AI chat endpoint."""
+    type: str  # 'chat', 'schedule_proposal', or 'error'
+    message: str
+    schedule: Optional[ScheduleProposal] = None
+
+
+class ReminderSuggestion(BaseModel):
+    """Single reminder suggestion."""
+    label: str
+    minutes_before: int
+
+
+class ReminderSuggestRequest(BaseModel):
+    """Request schema for reminder suggestions."""
+    task_title: str
+    task_date: str
+    task_time: Optional[str] = None
+    task_type: Optional[str] = None
+
+
+class ReminderSuggestResponse(BaseModel):
+    """Response schema for reminder suggestions."""
+    suggestions: List[ReminderSuggestion]
+    reasoning_summary: Optional[str] = None
+
+
+class NaturalLanguageTaskRequest(BaseModel):
+    """Request schema for natural language task parsing."""
+    user_input: str
+    current_date: Optional[str] = None
+
+
+class ParsedTaskData(BaseModel):
+    """Parsed task data from natural language."""
+    type: str = "schedule"
+    title: str
+    start_date: str
+    end_date: Optional[str] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    all_day: Optional[bool] = False
+    recurrence: Optional[dict] = None
+    reminder: Optional[dict] = None
+    notes: Optional[str] = None
+
+
+class NaturalLanguageTaskResponse(BaseModel):
+    """Response schema for natural language task parsing."""
+    type: str  # 'task', 'clarification', or 'error'
+    message: Optional[str] = None
+    data: Optional[ParsedTaskData] = None

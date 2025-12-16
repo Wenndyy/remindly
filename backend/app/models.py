@@ -68,6 +68,7 @@ class Event(Base):
     all_day = Column(Boolean, default=False)
     guest = Column(Text, nullable=True)
     location = Column(String, nullable=True)
+    meeting_type = Column(String, nullable=True, default="onsite")  # 'onsite' or 'online'
     project_id = Column(Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     created_at = Column(Integer, default=lambda: int(time.time()))

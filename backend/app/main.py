@@ -9,7 +9,9 @@ from .schemas import (
     RegisterResponse, UserResponse, EventCreate, EventResponse,
     ProjectCreate, ProjectUpdate, ProjectResponse,
     NotificationResponse, NotificationCreate, UpcomingEventSummary, UpcomingTasksResponse,
-    ProfileUpdate
+    ProfileUpdate,
+    AIChatRequest, AIChatResponse, ReminderSuggestRequest, ReminderSuggestResponse,
+    NaturalLanguageTaskRequest, NaturalLanguageTaskResponse
 )
 from app.ai_service import get_ai_service
 import time, secrets, json, os, uuid
@@ -359,6 +361,7 @@ async def create_event(
         all_day=payload.all_day,
         guest=payload.guest,
         location=payload.location,
+        meeting_type=payload.meeting_type,
         project_id=payload.project_id,
         user_id=current_user.id,
     )
@@ -503,6 +506,8 @@ async def update_event(
         event.guest = payload.guest
     if payload.location is not None:
         event.location = payload.location
+    if payload.meeting_type is not None:
+        event.meeting_type = payload.meeting_type
     
     # Handle project_id explicitly - allow setting to None (remove from project)
     # Check if project_id was provided in the request (including null)
@@ -1139,3 +1144,124 @@ def delete_notification(
     db.commit()
     
     return
+
+
+# =============================================================================
+# AI CHAT ENDPOINTS - Schedule Assistant
+# =============================================================================
+
+@app.post("/ai/chat", response_model=AIChatResponse)
+def ai_chat(
+    request: AIChatRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    AI Chat endpoint for schedule assistance.
+    
+    Returns either:
+    - Chat response with clarifying questions
+    - Schedule proposal with structured JSON data
+    - Error response if AI service fails
+    """
+    ai = get_ai_service()
+    
+    # Convert conversation history to dict format
+    history = None
+    if request.conversation_history:
+        history = [{"role": m.role, "content": m.content} for m in request.conversation_history]
+    
+    result = ai.chat_with_schedule_assistant(
+        user_message=request.message,
+        conversation_history=history,
+        timezone=request.timezone or "Asia/Jakarta"
+    )
+    
+    # Handle error responses
+    if result.get("type") == "error":
+        return AIChatResponse(
+            type="error",
+            message=result.get("message", "AI service is temporarily unavailable.")
+        )
+    
+    # Handle schedule proposal
+    if result.get("type") == "schedule_proposal":
+        return AIChatResponse(
+            type="schedule_proposal",
+            message=result.get("message", "Here's your proposed schedule:"),
+            schedule=result.get("schedule")
+        )
+    
+    # Regular chat response
+    return AIChatResponse(
+        type="chat",
+        message=result.get("message", "I'm here to help with your schedule.")
+    )
+
+
+@app.post("/ai/suggest-reminders", response_model=ReminderSuggestResponse)
+def suggest_reminders(
+    request: ReminderSuggestRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get AI-powered reminder suggestions for a task.
+    
+    Returns 3 suggested reminder timings with reasoning.
+    """
+    ai = get_ai_service()
+    
+    result = ai.suggest_reminders(
+        task_title=request.task_title,
+        task_date=request.task_date,
+        task_time=request.task_time,
+        task_type=request.task_type
+    )
+    
+    return ReminderSuggestResponse(
+        suggestions=result.get("suggestions", []),
+        reasoning_summary=result.get("reasoning_summary")
+    )
+
+
+@app.post("/ai/parse-task", response_model=NaturalLanguageTaskResponse)
+def parse_natural_language_task(
+    request: NaturalLanguageTaskRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Parse natural language input into structured task/event data.
+    
+    Returns either:
+    - Parsed task data ready to create
+    - Clarification request if details are missing
+    - Error response if parsing fails
+    """
+    ai = get_ai_service()
+    
+    # Use provided date or current date
+    current_date = request.current_date or datetime.now().strftime("%Y-%m-%d")
+    
+    result = ai.parse_natural_language_task(
+        user_input=request.user_input,
+        current_date=current_date
+    )
+    
+    # Handle error responses
+    if result.get("type") == "error":
+        return NaturalLanguageTaskResponse(
+            type="error",
+            message=result.get("message", "AI service is temporarily unavailable.")
+        )
+    
+    # Handle clarification requests
+    if result.get("type") == "clarification":
+        return NaturalLanguageTaskResponse(
+            type="clarification",
+            message=result.get("message")
+        )
+    
+    # Return parsed task data
+    return NaturalLanguageTaskResponse(
+        type="task",
+        data=result.get("data")
+    )

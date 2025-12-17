@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { useChatContext } from "../../contexts/ChatContext";
+import { useUser } from "../../contexts/UserContext";
 import axiosClient from "../api/axiosClient";
 import { checkTimeConflict, validateTimeOrder, EventForConflictCheck } from "../utils/conflictDetection";
 
@@ -36,6 +37,7 @@ type ChatMessage = {
 
 export default function FloatingAIChat() {
     const { messages, setMessages, isOpen, setIsOpen } = useChatContext();
+    const { user, loading: userLoading } = useUser();
 
     const [inputValue, setInputValue] = useState("");
     const [isTyping, setIsTyping] = useState(false);
@@ -47,6 +49,9 @@ export default function FloatingAIChat() {
 
     // Fetch existing events for conflict detection
     useEffect(() => {
+        // Skip if user not logged in
+        if (!user) return;
+
         const fetchEvents = async () => {
             try {
                 const res = await axiosClient.get("/events");
@@ -66,21 +71,26 @@ export default function FloatingAIChat() {
         if (isOpen) {
             fetchEvents();
         }
-    }, [isOpen]);
+    }, [isOpen, user]);
 
     // Auto-scroll to bottom
     useEffect(() => {
-        if (isOpen) {
+        if (isOpen && user) {
             messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
         }
-    }, [messages, isOpen]);
+    }, [messages, isOpen, user]);
 
     // Focus input when popup opens
     useEffect(() => {
-        if (isOpen) {
+        if (isOpen && user) {
             setTimeout(() => inputRef.current?.focus(), 100);
         }
-    }, [isOpen]);
+    }, [isOpen, user]);
+
+    // Don't render anything if user is not logged in
+    if (!userLoading && !user) {
+        return null;
+    }
 
     const generateMessageId = () => {
         return `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -116,9 +126,23 @@ export default function FloatingAIChat() {
                 requestBody.conversation_history = conversationHistory;
             }
 
+            console.log("[AI Chat] Sending request:", requestBody);
             const response = await axiosClient.post("/ai/chat", requestBody);
 
             const data = response.data;
+            console.log("[AI Chat] Response received:", data);
+
+            // Check for error type response from backend
+            if (data.type === "error") {
+                const errorMessage: Message = {
+                    id: generateMessageId(),
+                    role: "assistant",
+                    content: data.message || "Maaf, terjadi kesalahan. Silakan coba lagi.",
+                    timestamp: new Date(),
+                };
+                setMessages((prev) => [...prev, errorMessage]);
+                return;
+            }
 
             const assistantMessage: Message = {
                 id: generateMessageId(),
@@ -133,12 +157,24 @@ export default function FloatingAIChat() {
             }
 
             setMessages((prev) => [...prev, assistantMessage]);
-        } catch (error) {
-            console.error("AI chat error:", error);
+        } catch (error: any) {
+            console.error("[AI Chat] Error:", error);
+            console.error("[AI Chat] Error response:", error?.response?.data);
+
+            // Get specific error message if available
+            let errorContent = "AI service is temporarily unavailable. Please try again later.";
+            if (error?.response?.data?.detail) {
+                errorContent = `Error: ${error.response.data.detail}`;
+            } else if (error?.response?.data?.message) {
+                errorContent = error.response.data.message;
+            } else if (error?.message) {
+                errorContent = `Connection error: ${error.message}`;
+            }
+
             const errorMessage: Message = {
                 id: generateMessageId(),
                 role: "assistant",
-                content: "AI service is temporarily unavailable. Please try again later.",
+                content: errorContent,
                 timestamp: new Date(),
             };
             setMessages((prev) => [...prev, errorMessage]);

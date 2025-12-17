@@ -53,6 +53,10 @@ export default function NotificationDropdown() {
     const [upcomingData, setUpcomingData] = useState<UpcomingTasksResponse | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [markedAsRead, setMarkedAsRead] = useState(false);
+    const [lastFetched, setLastFetched] = useState<number>(0);
+
+    // Cache TTL: 5 minutes for client-side cache
+    const CACHE_TTL_MS = 5 * 60 * 1000;
 
     /**
      * Check if already marked as read today (from localStorage)
@@ -64,37 +68,63 @@ export default function NotificationDropdown() {
     };
 
     /**
-     * Fetch today's schedule on mount
+     * Fetch today's schedule on mount (initial load)
      */
     useEffect(() => {
         setMarkedAsRead(checkIfMarkedAsRead());
-        fetchUpcomingTasks();
+        fetchUpcomingTasks(false);
     }, []);
 
     /**
-     * Fetch today's schedule
+     * Fetch today's schedule with caching support
+     * @param isBackgroundRefresh - If true, don't show loading spinner
      */
-    const fetchUpcomingTasks = async () => {
-        setLoading(true);
+    const fetchUpcomingTasks = async (isBackgroundRefresh: boolean = false) => {
+        // Only show loading on initial fetch, not background refresh
+        if (!isBackgroundRefresh) {
+            setLoading(true);
+        }
         setError(null);
 
         try {
             const response = await axiosClient.get("/notifications/upcoming");
             setUpcomingData(response.data);
+            setLastFetched(Date.now());
         } catch (err: any) {
             console.error("Failed to fetch today's schedule:", err);
-            setError("Gagal memuat notifikasi");
+            // Only show error if no cached data available
+            if (!upcomingData) {
+                setError("Gagal memuat notifikasi");
+            }
         } finally {
-            setLoading(false);
+            if (!isBackgroundRefresh) {
+                setLoading(false);
+            }
         }
     };
 
     /**
-     * Handle dropdown toggle
+     * Handle dropdown toggle with smart caching
+     * - If cache exists and is fresh: show immediately, no fetch
+     * - If cache exists but stale: show immediately, fetch in background
+     * - If no cache: fetch and show loading
      */
     const toggleDropdown = () => {
         if (!isOpen) {
-            fetchUpcomingTasks();
+            const now = Date.now();
+            const isCacheStale = now - lastFetched > CACHE_TTL_MS;
+
+            if (upcomingData && !isCacheStale) {
+                // Cache is fresh, just open dropdown instantly
+                // No fetch needed
+            } else if (upcomingData && isCacheStale) {
+                // Have cached data but it's stale - refresh in background
+                fetchUpcomingTasks(true);
+            } else {
+                // No cached data - need to fetch with loading
+                fetchUpcomingTasks(false);
+            }
+
             setMarkedAsRead(checkIfMarkedAsRead());
         }
         setIsOpen(!isOpen);
@@ -258,7 +288,7 @@ export default function NotificationDropdown() {
                             <div className="py-6 text-center">
                                 <p className="text-gray-500 text-sm">{error}</p>
                                 <button
-                                    onClick={fetchUpcomingTasks}
+                                    onClick={() => fetchUpcomingTasks(false)}
                                     className="mt-2 text-sm text-red-600 hover:underline"
                                 >
                                     Coba lagi

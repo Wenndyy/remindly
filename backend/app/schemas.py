@@ -219,7 +219,7 @@ class AIChatResponse(BaseModel):
     """Response schema for AI chat endpoint."""
     type: str  # 'chat', 'schedule_proposal', or 'error'
     message: str
-    schedule: Optional[ScheduleProposal] = None
+    schedule: Optional[dict] = None  # Raw schedule data from AI, flexible format
 
 
 class ReminderSuggestion(BaseModel):

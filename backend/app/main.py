@@ -890,7 +890,7 @@ def list_users_for_suggestions(
 # =============================================================================
 
 @app.get("/notifications/upcoming", response_model=UpcomingTasksResponse)
-def get_upcoming_tasks_with_ai(
+async def get_upcoming_tasks_with_ai(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -900,9 +900,16 @@ def get_upcoming_tasks_with_ai(
     This endpoint uses Mistral LLM to generate personalized reminders
     for each upcoming event scheduled for today.
     
+    Performance optimized:
+    - Uses in-memory caching for AI responses
+    - Parallel AI calls for multiple events
+    
     Returns:
         UpcomingTasksResponse with AI-generated content
     """
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    
     # Get today's date only
     today = datetime.now().date()
     today_str = today.strftime("%Y-%m-%d")
@@ -918,17 +925,23 @@ def get_upcoming_tasks_with_ai(
     # Get AI service
     ai_service = get_ai_service()
     
-    # Build response with AI-generated reminders
-    upcoming_events = []
-    events_for_summary = []
-    
+    # Prepare event data for parallel processing
+    event_data_list = []
     for event in events:
-        # Calculate days until event
         event_date = datetime.strptime(event.start_date, "%Y-%m-%d").date()
         days_until = (event_date - today).days
-        
-        # Generate AI reminder for this event
-        ai_reminder = ai_service.generate_reminder_message(
+        event_data_list.append({
+            "event": event,
+            "days_until": days_until
+        })
+    
+    # Generate AI reminders in parallel using ThreadPoolExecutor
+    def generate_reminder_for_event(event_data):
+        """Wrapper function to generate reminder for a single event."""
+        event = event_data["event"]
+        days_until = event_data["days_until"]
+        return ai_service.generate_reminder_message(
+            event_id=event.id,
             event_title=event.title,
             event_date=event.start_date,
             days_until=days_until,
@@ -936,6 +949,23 @@ def get_upcoming_tasks_with_ai(
             event_description=event.description,
             project_name=event.project.name if event.project else None
         )
+    
+    # Run AI calls in parallel
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        ai_reminders = await asyncio.gather(*[
+            loop.run_in_executor(executor, generate_reminder_for_event, ed)
+            for ed in event_data_list
+        ])
+    
+    # Build response with AI-generated reminders
+    upcoming_events = []
+    events_for_summary = []
+    
+    for i, event_data in enumerate(event_data_list):
+        event = event_data["event"]
+        days_until = event_data["days_until"]
+        ai_reminder = ai_reminders[i] if i < len(ai_reminders) else None
         
         upcoming_events.append(UpcomingEventSummary(
             event_id=event.id,
@@ -955,8 +985,8 @@ def get_upcoming_tasks_with_ai(
             "days_until": days_until
         })
     
-    # Generate overall AI summary
-    ai_summary = ai_service.generate_summary(events_for_summary)
+    # Generate overall AI summary (also cached)
+    ai_summary = ai_service.generate_summary(events_for_summary, today_str)
     
     return UpcomingTasksResponse(
         total_events=len(upcoming_events),
@@ -1151,8 +1181,8 @@ def delete_notification(
 # =============================================================================
 
 @app.post("/ai/chat", response_model=AIChatResponse)
-def ai_chat(
-    request: AIChatRequest,
+async def ai_chat(
+    request: Request,
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -1163,17 +1193,29 @@ def ai_chat(
     - Schedule proposal with structured JSON data
     - Error response if AI service fails
     """
+    # Parse body manually to avoid pydantic issues
+    try:
+        body = await request.json()
+        message = body.get("message", "")
+        timezone = body.get("timezone", "Asia/Jakarta")
+        conversation_history = body.get("conversation_history")
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Invalid request body: {str(e)}")
+    
+    if not message:
+        raise HTTPException(status_code=422, detail="Message is required")
+    
     ai = get_ai_service()
     
     # Convert conversation history to dict format
     history = None
-    if request.conversation_history:
-        history = [{"role": m.role, "content": m.content} for m in request.conversation_history]
+    if conversation_history:
+        history = [{"role": m.get("role", "user"), "content": m.get("content", "")} for m in conversation_history]
     
     result = ai.chat_with_schedule_assistant(
-        user_message=request.message,
+        user_message=message,
         conversation_history=history,
-        timezone=request.timezone or "Asia/Jakarta"
+        timezone=timezone
     )
     
     # Handle error responses
@@ -1200,7 +1242,7 @@ def ai_chat(
 
 @app.post("/ai/suggest-reminders", response_model=ReminderSuggestResponse)
 def suggest_reminders(
-    request: ReminderSuggestRequest,
+    reminder_request: ReminderSuggestRequest,
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -1211,10 +1253,10 @@ def suggest_reminders(
     ai = get_ai_service()
     
     result = ai.suggest_reminders(
-        task_title=request.task_title,
-        task_date=request.task_date,
-        task_time=request.task_time,
-        task_type=request.task_type
+        task_title=reminder_request.task_title,
+        task_date=reminder_request.task_date,
+        task_time=reminder_request.task_time,
+        task_type=reminder_request.task_type
     )
     
     return ReminderSuggestResponse(
@@ -1225,7 +1267,7 @@ def suggest_reminders(
 
 @app.post("/ai/parse-task", response_model=NaturalLanguageTaskResponse)
 def parse_natural_language_task(
-    request: NaturalLanguageTaskRequest,
+    task_request: NaturalLanguageTaskRequest,
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -1239,10 +1281,10 @@ def parse_natural_language_task(
     ai = get_ai_service()
     
     # Use provided date or current date
-    current_date = request.current_date or datetime.now().strftime("%Y-%m-%d")
+    current_date = task_request.current_date or datetime.now().strftime("%Y-%m-%d")
     
     result = ai.parse_natural_language_task(
-        user_input=request.user_input,
+        user_input=task_request.user_input,
         current_date=current_date
     )
     

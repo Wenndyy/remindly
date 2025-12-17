@@ -6,13 +6,47 @@ for upcoming events and tasks.
 """
 import os
 import time
-from typing import List, Optional
+import asyncio
+from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor
 import httpx
 from dotenv import load_dotenv
 
 # Load .env file explicitly
 load_dotenv()
+
+# =============================================================================
+# IN-MEMORY CACHE FOR AI RESPONSES
+# =============================================================================
+_ai_cache: Dict[str, Dict[str, Any]] = {}
+_cache_ttl = 3600  # 1 hour cache TTL
+_executor = ThreadPoolExecutor(max_workers=10)  # For parallel AI calls
+
+
+def _get_cache_key(prefix: str, event_id: int, event_date: str) -> str:
+    """Generate cache key for AI responses."""
+    return f"{prefix}_{event_id}_{event_date}"
+
+
+def _get_from_cache(cache_key: str) -> Optional[str]:
+    """Get value from cache if not expired."""
+    if cache_key in _ai_cache:
+        cached = _ai_cache[cache_key]
+        if time.time() - cached['timestamp'] < _cache_ttl:
+            return cached['value']
+        else:
+            # Clean up expired entry
+            del _ai_cache[cache_key]
+    return None
+
+
+def _set_cache(cache_key: str, value: str) -> None:
+    """Set value in cache with current timestamp."""
+    _ai_cache[cache_key] = {
+        'value': value,
+        'timestamp': time.time()
+    }
 
 
 class MistralAIService:
@@ -20,7 +54,7 @@ class MistralAIService:
     Service for generating AI-powered reminder messages using Mistral LLM.
     
     This service creates personalized, contextual reminders for upcoming 
-    events within a 3-day window.
+    events within a 3-day window. Includes caching to avoid redundant API calls.
     
     Attributes:
         api_key: Mistral API key from environment
@@ -95,6 +129,7 @@ class MistralAIService:
     
     def generate_reminder_message(
         self, 
+        event_id: int,
         event_title: str, 
         event_date: str,
         days_until: int,
@@ -103,9 +138,10 @@ class MistralAIService:
         project_name: Optional[str] = None
     ) -> str:
         """
-        Generate a personalized reminder message for an event.
+        Generate a personalized reminder message for an event with caching.
         
         Args:
+            event_id: Unique ID of the event (for cache key)
             event_title: Title of the event
             event_date: Date of the event (YYYY-MM-DD format)
             days_until: Number of days until the event
@@ -116,6 +152,12 @@ class MistralAIService:
         Returns:
             AI-generated reminder message or fallback message
         """
+        # Check cache first
+        cache_key = _get_cache_key("reminder", event_id, event_date)
+        cached_value = _get_from_cache(cache_key)
+        if cached_value:
+            return cached_value
+        
         # Build context for the prompt
         context_parts = [f"Judul: {event_title}"]
         
@@ -144,9 +186,16 @@ class MistralAIService:
         ai_message = self._call_mistral(prompt)
         
         if ai_message:
+            # Cache the result
+            _set_cache(cache_key, ai_message)
             return ai_message
         
         # Fallback message if API fails
+        fallback = self._get_fallback_reminder(event_title, days_until)
+        return fallback
+    
+    def _get_fallback_reminder(self, event_title: str, days_until: int) -> str:
+        """Generate fallback reminder message when API fails."""
         if days_until == 0:
             return f"⏰ Hari ini ada {event_title}! Jangan lupa ya!"
         elif days_until == 1:
@@ -154,18 +203,31 @@ class MistralAIService:
         else:
             return f"🗓️ {event_title} akan berlangsung dalam {days_until} hari."
     
-    def generate_summary(self, events: List[dict]) -> str:
+    def generate_summary(self, events: List[dict], summary_date: str = None) -> str:
         """
-        Generate an overall AI summary of multiple upcoming events.
+        Generate an overall AI summary of multiple upcoming events with caching.
         
         Args:
             events: List of event dictionaries with title, date, days_until
+            summary_date: Date for cache key (defaults to today)
             
         Returns:
             AI-generated summary of upcoming schedule
         """
         if not events:
-            return "✨ Tidak ada tugas dalam 3 hari ke depan. Waktu santai!"
+            return "✨ Tidak ada jadwal hari ini. Waktu santai!"
+        
+        # Use today's date as cache key for summary
+        if not summary_date:
+            summary_date = datetime.now().strftime("%Y-%m-%d")
+        
+        # Create unique key based on event titles (sorted)
+        event_titles = sorted([e.get('title', '') for e in events])
+        cache_key = f"summary_{summary_date}_{hash(tuple(event_titles))}"
+        
+        cached_value = _get_from_cache(cache_key)
+        if cached_value:
+            return cached_value
             
         event_list = "\n".join([
             f"- {e['title']} ({e['days_until']} hari lagi)" 
@@ -173,7 +235,7 @@ class MistralAIService:
         ])
         
         prompt = (
-            f"Kamu punya {len(events)} tugas dalam 3 hari ke depan:\n"
+            f"Kamu punya {len(events)} jadwal hari ini:\n"
             f"{event_list}\n\n"
             f"Buat ringkasan singkat dan tips untuk mengatur waktu."
         )
@@ -181,10 +243,11 @@ class MistralAIService:
         ai_summary = self._call_mistral(prompt, max_tokens=200)
         
         if ai_summary:
+            _set_cache(cache_key, ai_summary)
             return ai_summary
             
         # Fallback summary
-        return f"📋 Kamu punya {len(events)} tugas dalam 3 hari ke depan. Semangat!"
+        return f"📋 Kamu punya {len(events)} jadwal hari ini. Semangat!"
     
     def chat_with_schedule_assistant(
         self, 
@@ -211,18 +274,29 @@ class MistralAIService:
                 "message": "AI API key not configured. Please set MISTRAL_API_KEY in .env file."
             }
         
-        system_prompt = f"""Kamu adalah Asisten Jadwal Remindly, AI yang membantu pengguna membuat dan mengatur jadwal mereka. Selalu jawab dalam Bahasa Indonesia.
+        # Get current date for context
+        today = datetime.now()
+        today_str = today.strftime("%Y-%m-%d")
+        today_display = today.strftime("%A, %d %B %Y")
+        
+        system_prompt = f"""Kamu adalah Asisten Jadwal Remindly, AI yang membantu pengguna membuat dan mengatur jadwal kalender mereka. Selalu jawab dalam Bahasa Indonesia dengan ramah dan natural.
 
-ATURAN PENTING:
-1. Jika permintaan pengguna kurang detail (tanggal, waktu, durasi), ajukan 1-3 pertanyaan klarifikasi.
-2. Jika sudah punya informasi lengkap, berikan jadwal dalam format JSON.
-3. Gunakan timezone: {timezone}
-4. Referensi tanggal: Gunakan hari ini sebagai basis untuk tanggal relatif (besok, lusa, dll).
+KONTEKS WAKTU:
+- Hari ini: {today_display}
+- Tanggal: {today_str}
+- Timezone: {timezone}
 
-FORMAT RESPONS:
-- Untuk pertanyaan klarifikasi: Jawab dengan teks percakapan natural dalam Bahasa Indonesia.
-- Untuk proposal jadwal: Berikan ringkasan singkat, lalu blok JSON dengan struktur PERSIS seperti ini:
+TUGAS UTAMA:
+1. Membantu pengguna membuat jadwal/event baru di kalender
+2. Menjawab pertanyaan tentang penjadwalan
+3. Merespons sapaan dengan ramah sebelum menawarkan bantuan
 
+ATURAN RESPONS:
+1. Untuk sapaan biasa (halo, hi, apa kabar): Balas dengan ramah, perkenalkan dirimu singkat, dan tawarkan bantuan jadwal.
+2. Untuk permintaan jadwal tanpa detail lengkap: Ajukan pertanyaan klarifikasi (tanggal, waktu, durasi).
+3. Untuk permintaan jadwal dengan detail lengkap: Berikan proposal jadwal dalam format JSON.
+
+FORMAT JSON (gunakan HANYA jika detail lengkap):
 ```json
 {{
   "title": "Proposal Jadwal",
@@ -240,7 +314,7 @@ FORMAT RESPONS:
 }}
 ```
 
-JSON harus valid dan bisa di-parse. Jangan ada komentar di dalam JSON."""
+PENTING: Untuk percakapan biasa, JANGAN gunakan format JSON. Cukup balas dengan teks natural."""
 
         messages = [{"role": "system", "content": system_prompt}]
         

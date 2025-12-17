@@ -1184,6 +1184,7 @@ def delete_notification(
 async def ai_chat(
     request: Request,
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
     AI Chat endpoint for schedule assistance.
@@ -1207,6 +1208,28 @@ async def ai_chat(
     
     ai = get_ai_service()
     
+    # Fetch user's upcoming events for context (next 30 days)
+    today = datetime.now().date()
+    end_date = today + timedelta(days=30)
+    
+    user_events = db.query(Event).filter(
+        Event.user_id == current_user.id,
+        Event.start_date >= today.strftime("%Y-%m-%d"),
+        Event.start_date <= end_date.strftime("%Y-%m-%d")
+    ).order_by(Event.start_date, Event.start_time).limit(20).all()
+    
+    # Convert to dict format for AI
+    events_data = []
+    for event in user_events:
+        events_data.append({
+            "title": event.title,
+            "start_date": event.start_date,
+            "start_time": event.start_time,
+            "end_time": event.end_time,
+            "location": event.location,
+            "description": event.description
+        })
+    
     # Convert conversation history to dict format
     history = None
     if conversation_history:
@@ -1215,7 +1238,8 @@ async def ai_chat(
     result = ai.chat_with_schedule_assistant(
         user_message=message,
         conversation_history=history,
-        timezone=timezone
+        timezone=timezone,
+        user_events=events_data
     )
     
     # Handle error responses

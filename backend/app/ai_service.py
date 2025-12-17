@@ -253,7 +253,8 @@ class MistralAIService:
         self, 
         user_message: str, 
         conversation_history: List[dict] = None,
-        timezone: str = "Asia/Jakarta"
+        timezone: str = "Asia/Jakarta",
+        user_events: List[dict] = None
     ) -> dict:
         """
         Process a chat message with the schedule assistant.
@@ -263,6 +264,7 @@ class MistralAIService:
             user_message: The user's message
             conversation_history: Previous messages in the conversation
             timezone: User's timezone
+            user_events: List of user's existing events for context
             
         Returns:
             Dict with 'type' ('chat' or 'schedule_proposal') and content
@@ -277,26 +279,59 @@ class MistralAIService:
         # Get current date for context
         today = datetime.now()
         today_str = today.strftime("%Y-%m-%d")
+        tomorrow_str = (today + timedelta(days=1)).strftime("%Y-%m-%d")
         today_display = today.strftime("%A, %d %B %Y")
         
-        system_prompt = f"""Kamu adalah Asisten Jadwal Remindly, AI yang membantu pengguna membuat dan mengatur jadwal kalender mereka. Selalu jawab dalam Bahasa Indonesia dengan ramah dan natural.
+        # Build events context if available
+        events_context = ""
+        if user_events:
+            events_list = []
+            for event in user_events[:15]:  # Limit to 15 events for context
+                event_date = event.get('start_date', '')
+                event_time = event.get('start_time', '')
+                end_time = event.get('end_time', '')
+                title = event.get('title', 'Untitled')
+                location = event.get('location', '')
+                
+                event_str = f"- {title} pada {event_date}"
+                if event_time:
+                    event_str += f" jam {event_time}"
+                    if end_time:
+                        event_str += f"-{end_time}"
+                if location:
+                    event_str += f" di {location}"
+                events_list.append(event_str)
+            
+            events_context = f"""
+JADWAL PENGGUNA (dari database):
+{chr(10).join(events_list)}
+"""
+        
+        system_prompt = f"""Kamu adalah Asisten Jadwal Remindly, AI yang membantu pengguna mengatur jadwal kalender mereka. Selalu jawab dalam Bahasa Indonesia dengan ramah dan natural.
 
 KONTEKS WAKTU:
 - Hari ini: {today_display}
-- Tanggal: {today_str}
+- Tanggal hari ini: {today_str}
+- Tanggal besok: {tomorrow_str}
 - Timezone: {timezone}
+{events_context}
 
 TUGAS UTAMA:
-1. Membantu pengguna membuat jadwal/event baru di kalender
-2. Menjawab pertanyaan tentang penjadwalan
-3. Merespons sapaan dengan ramah sebelum menawarkan bantuan
+1. **Melihat Jadwal**: Jika pengguna bertanya tentang jadwal mereka (hari ini, besok, minggu ini), lihat data JADWAL PENGGUNA di atas dan sampaikan dengan natural.
+2. **Membuat Jadwal Baru**: Jika pengguna ingin membuat jadwal baru, bantu dengan pertanyaan klarifikasi lalu berikan proposal JSON.
+3. **Sapaan Biasa**: Jika hanya sapaan, balas ramah dan tawarkan bantuan.
+
+CARA MEMBEDAKAN:
+- "cek jadwal hari ini", "jadwal besok apa", "apa saja jadwalku" → LIHAT jadwal existing
+- "buatkan jadwal", "tambah meeting", "ingatkan saya" → BUAT jadwal baru
+- "halo", "hi", "apa kabar" → SAPAAN biasa
 
 ATURAN RESPONS:
-1. Untuk sapaan biasa (halo, hi, apa kabar): Balas dengan ramah, perkenalkan dirimu singkat, dan tawarkan bantuan jadwal.
-2. Untuk permintaan jadwal tanpa detail lengkap: Ajukan pertanyaan klarifikasi (tanggal, waktu, durasi).
-3. Untuk permintaan jadwal dengan detail lengkap: Berikan proposal jadwal dalam format JSON.
+1. Untuk MELIHAT jadwal: Gunakan data JADWAL PENGGUNA di atas. Jika tidak ada jadwal, bilang "belum ada jadwal".
+2. Untuk BUAT jadwal baru: Jika detail kurang (tanggal/waktu), tanya dulu. Jika lengkap, berikan JSON proposal.
+3. Untuk sapaan: Balas ramah, tawarkan bantuan jadwal.
 
-FORMAT JSON (gunakan HANYA jika detail lengkap):
+FORMAT JSON (HANYA untuk membuat jadwal baru dengan detail lengkap):
 ```json
 {{
   "title": "Proposal Jadwal",
@@ -307,14 +342,15 @@ FORMAT JSON (gunakan HANYA jika detail lengkap):
       "date": "YYYY-MM-DD",
       "start_time": "HH:MM",
       "end_time": "HH:MM",
-      "notes": "Catatan opsional",
-      "category": "Nama kategori"
+      "notes": "Catatan opsional"
     }}
   ]
 }}
 ```
 
-PENTING: Untuk percakapan biasa, JANGAN gunakan format JSON. Cukup balas dengan teks natural."""
+PENTING: 
+- Jangan kirim JSON untuk pertanyaan tentang jadwal existing.
+- Jangan ulangi proposal sebelumnya jika user bertanya tentang jadwalnya."""
 
         messages = [{"role": "system", "content": system_prompt}]
         

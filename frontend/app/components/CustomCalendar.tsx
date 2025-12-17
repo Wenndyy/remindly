@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import EventModal, { EventForm } from "./EventModal";
+import { EventForConflictCheck } from "../utils/conflictDetection";
 
 export type EventItem = {
   id?: string;
@@ -920,6 +921,14 @@ export default function CustomCalendar({
         }
         onClose={closeModal}
         onSave={handleSaveFromModal}
+        existingEvents={events.map((ev): EventForConflictCheck => ({
+          id: ev.id,
+          startDate: ev.date,
+          startTime: ev.start_time || `${String(ev.startHour).padStart(2, "0")}:${String(ev.startMinute ?? 0).padStart(2, "0")}`,
+          endTime: ev.end_time || `${String(ev.endHour ?? ev.startHour + 1).padStart(2, "0")}:${String(ev.endMinute ?? 0).padStart(2, "0")}`,
+          title: ev.title,
+          allDay: ev.all_day,
+        }))}
       />
     </div>
   );

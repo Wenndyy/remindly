@@ -7,6 +7,7 @@ import axiosClient from "../../api/axiosClient";
 import Header from "../../components/Header";
 
 import EventModal from "../../components/EventModal";
+import { EventForConflictCheck } from "../../utils/conflictDetection";
 
 type EventShape = {
   id: number;
@@ -767,6 +768,15 @@ export default function ProjectDetailPage({
         }
         onClose={closeModal}
         onSave={handleSaveFromModal}
+        existingEvents={events.map((ev): EventForConflictCheck => ({
+          id: ev.id,
+          startDate: ev.dateStart,
+          endDate: ev.dateEnd,
+          startTime: ev.start_time || '',
+          endTime: ev.end_time || '',
+          title: ev.title,
+          allDay: ev.all_day,
+        }))}
       />
 
       {/* Delete Confirmation Modal */}

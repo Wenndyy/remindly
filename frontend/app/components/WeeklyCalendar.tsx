@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from "react";
 import EventModal, { EventForm } from "./EventModal";
+import { EventForConflictCheck } from "../utils/conflictDetection";
 
 export type EventItem = {
   id?: string;
@@ -363,8 +364,8 @@ export default function WeeklyCalendar({
                   key={asDateKey(d.date)}
                   onClick={() => onDateSelect?.(d.date)}
                   className={`py-3 text-center border-r last:border-r-0 cursor-pointer transition-colors ${d.isToday
-                      ? "border-t-4 border-t-[#337AF7] border-b-0 border-l-0 border-r-0"
-                      : "border-t border-l-0 border-r border-b-0 hover:bg-gray-50"
+                    ? "border-t-4 border-t-[#337AF7] border-b-0 border-l-0 border-r-0"
+                    : "border-t border-l-0 border-r border-b-0 hover:bg-gray-50"
                     }`}
                 >
                   <div className={`text-sm font-semibold text-black`}>
@@ -501,6 +502,14 @@ export default function WeeklyCalendar({
         }
         onClose={closeModal}
         onSave={handleSaveFromModal}
+        existingEvents={events.map((ev): EventForConflictCheck => ({
+          id: ev.id,
+          startDate: ev.date,
+          startTime: ev.start_time || `${String(ev.startHour).padStart(2, "0")}:${String(ev.startMinute ?? 0).padStart(2, "0")}`,
+          endTime: ev.end_time || `${String(ev.endHour ?? ev.startHour + 1).padStart(2, "0")}:${String(ev.endMinute ?? 0).padStart(2, "0")}`,
+          title: ev.title,
+          allDay: ev.all_day,
+        }))}
       />
     </div>
   );

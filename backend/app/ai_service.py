@@ -521,6 +521,105 @@ Berikan 3 saran yang sesuai untuk jenis tugas ini."""
             "reasoning_summary": "Saran pengingat default"
         }
     
+    def suggest_alternative_times(
+        self,
+        conflicting_event_title: str,
+        conflicting_start: str,
+        conflicting_end: str,
+        date: str,
+        duration_minutes: int,
+        existing_events: list = None
+    ) -> dict:
+        """
+        Suggest alternative times when a schedule conflict is detected.
+        
+        Args:
+            conflicting_event_title: Title of the conflicting event
+            conflicting_start: Start time of conflicting event (HH:MM)
+            conflicting_end: End time of conflicting event (HH:MM)
+            date: Date of the event (YYYY-MM-DD)
+            duration_minutes: Duration of the new event in minutes
+            existing_events: List of existing events on that day
+            
+        Returns:
+            Dict with suggested alternative time slots
+        """
+        # Calculate duration in hours for display
+        duration_hours = duration_minutes / 60
+        
+        # Build existing events context
+        events_context = ""
+        if existing_events:
+            events_list = []
+            for event in existing_events:
+                start = event.get('start_time', '')
+                end = event.get('end_time', '')
+                title = event.get('title', '')
+                if start and end:
+                    events_list.append(f"- {title}: {start} - {end}")
+            if events_list:
+                events_context = f"\n\nJadwal lain di hari yang sama:\n" + "\n".join(events_list)
+        
+        # Simple algorithm: find slots before and after conflict
+        suggestions = []
+        
+        # Parse conflicting times
+        try:
+            conf_start_parts = conflicting_start.split(":")
+            conf_end_parts = conflicting_end.split(":")
+            conf_start_mins = int(conf_start_parts[0]) * 60 + int(conf_start_parts[1])
+            conf_end_mins = int(conf_end_parts[0]) * 60 + int(conf_end_parts[1])
+            
+            # Suggestion 1: Before the conflicting event
+            before_end_mins = conf_start_mins
+            before_start_mins = before_end_mins - duration_minutes
+            if before_start_mins >= 7 * 60:  # Not earlier than 07:00
+                before_start = f"{before_start_mins // 60:02d}:{before_start_mins % 60:02d}"
+                before_end = f"{before_end_mins // 60:02d}:{before_end_mins % 60:02d}"
+                suggestions.append({
+                    "label": "Sebelum",
+                    "startTime": before_start,
+                    "endTime": before_end
+                })
+            
+            # Suggestion 2: After the conflicting event
+            after_start_mins = conf_end_mins
+            after_end_mins = after_start_mins + duration_minutes
+            if after_end_mins <= 22 * 60:  # Not later than 22:00
+                after_start = f"{after_start_mins // 60:02d}:{after_start_mins % 60:02d}"
+                after_end = f"{after_end_mins // 60:02d}:{after_end_mins % 60:02d}"
+                suggestions.append({
+                    "label": "Setelah",
+                    "startTime": after_start,
+                    "endTime": after_end
+                })
+            
+            # Suggestion 3: Afternoon slot (if not already covering that time)
+            afternoon_start_mins = 14 * 60  # 14:00
+            afternoon_end_mins = afternoon_start_mins + duration_minutes
+            if (afternoon_start_mins >= conf_end_mins or afternoon_end_mins <= conf_start_mins) and afternoon_end_mins <= 18 * 60:
+                afternoon_start = f"{afternoon_start_mins // 60:02d}:{afternoon_start_mins % 60:02d}"
+                afternoon_end = f"{afternoon_end_mins // 60:02d}:{afternoon_end_mins % 60:02d}"
+                suggestions.append({
+                    "label": "Siang",
+                    "startTime": afternoon_start,
+                    "endTime": afternoon_end
+                })
+        except Exception as e:
+            print(f"Error calculating alternative times: {e}")
+        
+        # If no suggestions found, provide defaults
+        if not suggestions:
+            suggestions = [
+                {"label": "Pagi", "startTime": "09:00", "endTime": f"{9 + int(duration_minutes/60):02d}:{duration_minutes % 60:02d}"},
+                {"label": "Siang", "startTime": "14:00", "endTime": f"{14 + int(duration_minutes/60):02d}:{duration_minutes % 60:02d}"}
+            ]
+        
+        return {
+            "suggestions": suggestions[:3],  # Max 3 suggestions
+            "conflicting_event": conflicting_event_title
+        }
+    
     def parse_natural_language_task(self, user_input: str, current_date: str) -> dict:
         """
         Parse natural language into structured task/event data.

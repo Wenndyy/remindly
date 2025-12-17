@@ -1264,29 +1264,63 @@ async def ai_chat(
     )
 
 
-@app.post("/ai/suggest-reminders", response_model=ReminderSuggestResponse)
-def suggest_reminders(
-    reminder_request: ReminderSuggestRequest,
+@app.post("/ai/suggest-alternative-times")
+async def suggest_alternative_times(
+    request: Request,
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
-    Get AI-powered reminder suggestions for a task.
+    Get AI-suggested alternative times when a schedule conflict is detected.
     
-    Returns 3 suggested reminder timings with reasoning.
+    Request body:
+    - conflicting_event_title: Title of the conflicting event
+    - conflicting_start: Start time of conflicting event (HH:MM)
+    - conflicting_end: End time of conflicting event (HH:MM)
+    - date: Date of the event (YYYY-MM-DD)
+    - duration_minutes: Duration of the new event in minutes
+    
+    Returns suggested non-conflicting time slots.
     """
+    # Parse request body manually
+    try:
+        request_data = await request.json()
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Invalid JSON body: {str(e)}")
+    
     ai = get_ai_service()
     
-    result = ai.suggest_reminders(
-        task_title=reminder_request.task_title,
-        task_date=reminder_request.task_date,
-        task_time=reminder_request.task_time,
-        task_type=reminder_request.task_type
+    conflicting_event_title = request_data.get("conflicting_event_title", "")
+    conflicting_start = request_data.get("conflicting_start", "")
+    conflicting_end = request_data.get("conflicting_end", "")
+    date = request_data.get("date", "")
+    duration_minutes = request_data.get("duration_minutes", 60)
+    
+    # Get user's other events on that day for context
+    existing_events = []
+    if date:
+        events_on_date = db.query(Event).filter(
+            Event.user_id == current_user.id,
+            Event.start_date == date
+        ).all()
+        
+        for event in events_on_date:
+            existing_events.append({
+                "title": event.title,
+                "start_time": event.start_time,
+                "end_time": event.end_time
+            })
+    
+    result = ai.suggest_alternative_times(
+        conflicting_event_title=conflicting_event_title,
+        conflicting_start=conflicting_start,
+        conflicting_end=conflicting_end,
+        date=date,
+        duration_minutes=duration_minutes,
+        existing_events=existing_events
     )
     
-    return ReminderSuggestResponse(
-        suggestions=result.get("suggestions", []),
-        reasoning_summary=result.get("reasoning_summary")
-    )
+    return result
 
 
 @app.post("/ai/parse-task", response_model=NaturalLanguageTaskResponse)

@@ -29,7 +29,7 @@ export default function ConflictAlert({
     isLoading = false,
 }: ConflictAlertProps) {
     return (
-        <div className="mt-3 p-4 bg-red-50 border border-red-200 rounded-xl">
+        <div className="mt-3 p-4 bg-red-50 border border-red-200 rounded-xl mb-3">
             {/* Header */}
             <div className="flex items-center gap-2 mb-3">
                 <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">

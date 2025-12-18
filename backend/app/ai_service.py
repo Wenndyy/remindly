@@ -530,10 +530,13 @@ Berikan 3 saran yang sesuai untuk jenis tugas ini."""
         conflicting_end: str,
         date: str,
         duration_minutes: int,
-        existing_events: list = None
+        existing_events: list = None,
+        current_time: str = None,
+        current_date: str = None
     ) -> dict:
         """
         Suggest alternative times when a schedule conflict is detected.
+        Uses Mistral AI for smart recommendations that consider current time.
         
         Args:
             conflicting_event_title: Title of the conflicting event
@@ -542,15 +545,27 @@ Berikan 3 saran yang sesuai untuk jenis tugas ini."""
             date: Date of the event (YYYY-MM-DD)
             duration_minutes: Duration of the new event in minutes
             existing_events: List of existing events on that day
+            current_time: Current time (HH:MM) - to filter past suggestions
+            current_date: Current date (YYYY-MM-DD) - to check if scheduling for today
             
         Returns:
             Dict with suggested alternative time slots
         """
-        # Calculate duration in hours for display
-        duration_hours = duration_minutes / 60
+        # Parse current time for filtering
+        current_time_mins = None
+        is_today = False
         
-        # Build existing events context
+        if current_date and date == current_date and current_time:
+            is_today = True
+            try:
+                ct_parts = current_time.split(":")
+                current_time_mins = int(ct_parts[0]) * 60 + int(ct_parts[1])
+            except Exception:
+                current_time_mins = None
+        
+        # Build existing events context for AI
         events_context = ""
+        busy_slots = []
         if existing_events:
             events_list = []
             for event in existing_events:
@@ -559,23 +574,51 @@ Berikan 3 saran yang sesuai untuk jenis tugas ini."""
                 title = event.get('title', '')
                 if start and end:
                     events_list.append(f"- {title}: {start} - {end}")
+                    busy_slots.append({"start": start, "end": end, "title": title})
             if events_list:
-                events_context = f"\n\nJadwal lain di hari yang sama:\n" + "\n".join(events_list)
+                events_context = "\n".join(events_list)
         
-        # Simple algorithm: find slots before and after conflict
+        # Try AI-powered suggestions first
+        if self.api_key:
+            ai_suggestions = self._get_ai_alternative_times(
+                conflicting_event_title=conflicting_event_title,
+                conflicting_start=conflicting_start,
+                conflicting_end=conflicting_end,
+                date=date,
+                duration_minutes=duration_minutes,
+                events_context=events_context,
+                current_time=current_time if is_today else None,
+                is_today=is_today
+            )
+            if ai_suggestions:
+                # Filter past suggestions if scheduling for today
+                if is_today and current_time_mins is not None:
+                    ai_suggestions = self._filter_past_suggestions(ai_suggestions, current_time_mins)
+                
+                if ai_suggestions:
+                    return {
+                        "suggestions": ai_suggestions[:3],
+                        "conflicting_event": conflicting_event_title
+                    }
+        
+        # Fallback: Simple algorithm with current time awareness
         suggestions = []
         
-        # Parse conflicting times
         try:
             conf_start_parts = conflicting_start.split(":")
             conf_end_parts = conflicting_end.split(":")
             conf_start_mins = int(conf_start_parts[0]) * 60 + int(conf_start_parts[1])
             conf_end_mins = int(conf_end_parts[0]) * 60 + int(conf_end_parts[1])
             
-            # Suggestion 1: Before the conflicting event
+            # Minimum start time: either 07:00 or current_time + 15 min buffer (if today)
+            min_start_mins = 7 * 60
+            if is_today and current_time_mins is not None:
+                min_start_mins = max(min_start_mins, current_time_mins + 15)
+            
+            # Suggestion 1: Before the conflicting event (only if feasible)
             before_end_mins = conf_start_mins
             before_start_mins = before_end_mins - duration_minutes
-            if before_start_mins >= 7 * 60:  # Not earlier than 07:00
+            if before_start_mins >= min_start_mins:
                 before_start = f"{before_start_mins // 60:02d}:{before_start_mins % 60:02d}"
                 before_end = f"{before_end_mins // 60:02d}:{before_end_mins % 60:02d}"
                 suggestions.append({
@@ -587,7 +630,7 @@ Berikan 3 saran yang sesuai untuk jenis tugas ini."""
             # Suggestion 2: After the conflicting event
             after_start_mins = conf_end_mins
             after_end_mins = after_start_mins + duration_minutes
-            if after_end_mins <= 22 * 60:  # Not later than 22:00
+            if after_start_mins >= min_start_mins and after_end_mins <= 22 * 60:
                 after_start = f"{after_start_mins // 60:02d}:{after_start_mins % 60:02d}"
                 after_end = f"{after_end_mins // 60:02d}:{after_end_mins % 60:02d}"
                 suggestions.append({
@@ -596,31 +639,203 @@ Berikan 3 saran yang sesuai untuk jenis tugas ini."""
                     "endTime": after_end
                 })
             
-            # Suggestion 3: Afternoon slot (if not already covering that time)
-            afternoon_start_mins = 14 * 60  # 14:00
+            # Suggestion 3: Find a free slot that doesn't conflict with anything
+            # Try afternoon if available
+            afternoon_start_mins = max(14 * 60, min_start_mins)
             afternoon_end_mins = afternoon_start_mins + duration_minutes
             if (afternoon_start_mins >= conf_end_mins or afternoon_end_mins <= conf_start_mins) and afternoon_end_mins <= 18 * 60:
-                afternoon_start = f"{afternoon_start_mins // 60:02d}:{afternoon_start_mins % 60:02d}"
-                afternoon_end = f"{afternoon_end_mins // 60:02d}:{afternoon_end_mins % 60:02d}"
-                suggestions.append({
-                    "label": "Siang",
-                    "startTime": afternoon_start,
-                    "endTime": afternoon_end
-                })
+                # Check against other existing events
+                slot_available = True
+                for slot in busy_slots:
+                    try:
+                        slot_start = int(slot["start"].split(":")[0]) * 60 + int(slot["start"].split(":")[1])
+                        slot_end = int(slot["end"].split(":")[0]) * 60 + int(slot["end"].split(":")[1])
+                        if afternoon_start_mins < slot_end and afternoon_end_mins > slot_start:
+                            slot_available = False
+                            break
+                    except Exception:
+                        continue
+                
+                if slot_available:
+                    afternoon_start = f"{afternoon_start_mins // 60:02d}:{afternoon_start_mins % 60:02d}"
+                    afternoon_end = f"{afternoon_end_mins // 60:02d}:{afternoon_end_mins % 60:02d}"
+                    suggestions.append({
+                        "label": "Siang",
+                        "startTime": afternoon_start,
+                        "endTime": afternoon_end
+                    })
+            
+            # If still no suggestions, try morning slot
+            if len(suggestions) < 2:
+                morning_start_mins = max(9 * 60, min_start_mins)
+                morning_end_mins = morning_start_mins + duration_minutes
+                if (morning_start_mins >= conf_end_mins or morning_end_mins <= conf_start_mins) and morning_end_mins <= 12 * 60:
+                    slot_available = True
+                    for slot in busy_slots:
+                        try:
+                            slot_start = int(slot["start"].split(":")[0]) * 60 + int(slot["start"].split(":")[1])
+                            slot_end = int(slot["end"].split(":")[0]) * 60 + int(slot["end"].split(":")[1])
+                            if morning_start_mins < slot_end and morning_end_mins > slot_start:
+                                slot_available = False
+                                break
+                        except Exception:
+                            continue
+                    
+                    if slot_available:
+                        morning_start = f"{morning_start_mins // 60:02d}:{morning_start_mins % 60:02d}"
+                        morning_end = f"{morning_end_mins // 60:02d}:{morning_end_mins % 60:02d}"
+                        suggestions.append({
+                            "label": "Pagi",
+                            "startTime": morning_start,
+                            "endTime": morning_end
+                        })
+                        
         except Exception as e:
             print(f"Error calculating alternative times: {e}")
         
-        # If no suggestions found, provide defaults
+        # If no suggestions found, provide defaults that respect current time
         if not suggestions:
-            suggestions = [
-                {"label": "Pagi", "startTime": "09:00", "endTime": f"{9 + int(duration_minutes/60):02d}:{duration_minutes % 60:02d}"},
-                {"label": "Siang", "startTime": "14:00", "endTime": f"{14 + int(duration_minutes/60):02d}:{duration_minutes % 60:02d}"}
-            ]
+            if is_today and current_time_mins is not None:
+                # For today, only suggest future times
+                next_hour = ((current_time_mins // 60) + 1) * 60 + 30  # Next hour + 30 min
+                if next_hour + duration_minutes <= 22 * 60:
+                    suggestions.append({
+                        "label": "Segera",
+                        "startTime": f"{next_hour // 60:02d}:{next_hour % 60:02d}",
+                        "endTime": f"{(next_hour + duration_minutes) // 60:02d}:{(next_hour + duration_minutes) % 60:02d}"
+                    })
+            else:
+                suggestions = [
+                    {"label": "Pagi", "startTime": "09:00", "endTime": f"{9 + int(duration_minutes/60):02d}:{duration_minutes % 60:02d}"},
+                    {"label": "Siang", "startTime": "14:00", "endTime": f"{14 + int(duration_minutes/60):02d}:{duration_minutes % 60:02d}"}
+                ]
         
         return {
-            "suggestions": suggestions[:3],  # Max 3 suggestions
+            "suggestions": suggestions[:3],
             "conflicting_event": conflicting_event_title
         }
+    
+    def _filter_past_suggestions(self, suggestions: list, current_time_mins: int) -> list:
+        """Filter out suggestions that start before current time + 15 min buffer."""
+        filtered = []
+        min_start = current_time_mins + 15  # 15 minute buffer
+        
+        for suggestion in suggestions:
+            try:
+                start_parts = suggestion["startTime"].split(":")
+                start_mins = int(start_parts[0]) * 60 + int(start_parts[1])
+                if start_mins >= min_start:
+                    filtered.append(suggestion)
+            except Exception:
+                continue
+        
+        return filtered
+    
+    def _get_ai_alternative_times(
+        self,
+        conflicting_event_title: str,
+        conflicting_start: str,
+        conflicting_end: str,
+        date: str,
+        duration_minutes: int,
+        events_context: str,
+        current_time: str = None,
+        is_today: bool = False
+    ) -> list:
+        """
+        Use Mistral AI to suggest smart alternative time slots.
+        
+        Returns:
+            List of time slot suggestions or None if AI fails
+        """
+        if not self.api_key:
+            return None
+        
+        current_time_context = ""
+        if is_today and current_time:
+            current_time_context = f"\nWAKTU SEKARANG: {current_time} (Hari ini! Jangan sarankan waktu yang sudah lewat)"
+        
+        events_info = ""
+        if events_context:
+            events_info = f"\nJADWAL LAIN HARI ITU:\n{events_context}"
+        
+        prompt = f"""Kamu adalah asisten penjadwalan yang membantu mencari waktu alternatif untuk jadwal yang bentrok.
+
+KONTEKS:
+- Tanggal yang diminta: {date}
+- Durasi kegiatan: {duration_minutes} menit
+- Jadwal yang bentrok: "{conflicting_event_title}" pada {conflicting_start} - {conflicting_end}{current_time_context}{events_info}
+
+TUGAS:
+Sarankan 2-3 slot waktu alternatif yang:
+1. TIDAK bentrok dengan jadwal yang ada
+2. Masih dalam jam wajar (07:00 - 22:00)
+3. Jika hari ini, HARUS setelah waktu sekarang (minimal 15 menit dari sekarang)
+4. Prioritaskan jam kerja normal (09:00-17:00) jika memungkinkan
+
+JAWAB HANYA dalam format JSON berikut:
+{{
+  "slots": [
+    {{"label": "Nama singkat (Pagi/Siang/Sore/Malam/Setelah)", "start": "HH:MM", "end": "HH:MM"}},
+    {{"label": "Nama singkat", "start": "HH:MM", "end": "HH:MM"}}
+  ]
+}}
+
+PENTING: 
+- Hanya berikan JSON, tanpa penjelasan tambahan
+- Pastikan durasi setiap slot = {duration_minutes} menit
+- Jangan sarankan waktu yang sudah lewat jika ini hari ini"""
+
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            payload = {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": "Kamu adalah asisten penjadwalan. Selalu jawab dengan JSON yang valid saja."},
+                    {"role": "user", "content": prompt}
+                ],
+                "max_tokens": 300,
+                "temperature": 0.3
+            }
+            
+            with httpx.Client(timeout=30.0) as client:
+                response = client.post(
+                    self.base_url,
+                    headers=headers,
+                    json=payload
+                )
+                response.raise_for_status()
+                data = response.json()
+                ai_response = data["choices"][0]["message"]["content"].strip()
+                
+                import json
+                import re
+                
+                # Extract JSON from response
+                json_match = re.search(r'\{[\s\S]*\}', ai_response)
+                if json_match:
+                    parsed = json.loads(json_match.group())
+                    slots = parsed.get("slots", [])
+                    
+                    # Convert to expected format
+                    suggestions = []
+                    for slot in slots:
+                        suggestions.append({
+                            "label": slot.get("label", "Alternatif"),
+                            "startTime": slot.get("start", ""),
+                            "endTime": slot.get("end", "")
+                        })
+                    
+                    return suggestions if suggestions else None
+                    
+        except Exception as e:
+            print(f"[AI Service] Error getting AI alternative times: {e}")
+        
+        return None
     
     def parse_natural_language_task(self, user_input: str, current_date: str) -> dict:
         """

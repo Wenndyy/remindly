@@ -1282,6 +1282,7 @@ async def suggest_alternative_times(
     - duration_minutes: Duration of the new event in minutes
     
     Returns suggested non-conflicting time slots.
+    Now considers current time to avoid suggesting past time slots.
     """
     # Parse request body manually
     try:
@@ -1296,6 +1297,11 @@ async def suggest_alternative_times(
     conflicting_end = request_data.get("conflicting_end", "")
     date = request_data.get("date", "")
     duration_minutes = request_data.get("duration_minutes", 60)
+    
+    # Get current time and date for filtering past suggestions
+    now = datetime.now()
+    current_time = now.strftime("%H:%M")
+    current_date = now.strftime("%Y-%m-%d")
     
     # Get user's other events on that day for context
     existing_events = []
@@ -1318,7 +1324,9 @@ async def suggest_alternative_times(
         conflicting_end=conflicting_end,
         date=date,
         duration_minutes=duration_minutes,
-        existing_events=existing_events
+        existing_events=existing_events,
+        current_time=current_time,
+        current_date=current_date
     )
     
     return result

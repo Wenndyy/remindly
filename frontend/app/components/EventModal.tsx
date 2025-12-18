@@ -23,13 +23,20 @@ export type EventForm = {
   projectName?: string;
 };
 
-const getImageUrl = (url: string | null | undefined): string => {
-    if (!url) return '';
-    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
-        return url;
-    }
-    return `http://127.0.0.1:8000${url}`;
+const getImageUrl = (url?: string | null): string | null => {
+  if (!url) return null;
+
+  if (
+    url.startsWith("http://") ||
+    url.startsWith("https://") ||
+    url.startsWith("data:")
+  ) {
+    return url;
+  }
+
+  return `http://127.0.0.1:8000${url}`;
 };
+
 
 
 type User = {
@@ -332,6 +339,19 @@ export default function EventModal({
     // Keep conflictError to show warning, but user can now save
   }
 
+  async function sendInvitationEmail(eventId: number) {
+    try {
+      const token = localStorage.getItem("access_token");
+      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+
+      await axiosClient.post(`/events/${eventId}/invite`, {}, config);
+    } catch (err) {
+      console.error("Failed sending invitation email:", err);
+      // sengaja tidak ditampilkan ke user (non-blocking)
+    }
+  }
+
+
   async function handleSave() {
     // Get fresh date/time values at save time to avoid stale comparisons
     const now = new Date();
@@ -476,6 +496,10 @@ export default function EventModal({
       };
 
       showToast(initial?.id ? "Event updated successfully!" : "Event created successfully!", "success");
+
+      if (normalized.id && selectedGuests.length > 0) {
+        sendInvitationEmail(normalized.id);
+      }
 
       // Delay close to show toast
       setTimeout(() => {
@@ -727,7 +751,7 @@ export default function EventModal({
                         onClick={() => addGuestFromUser(u)}
                         className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-gray-50"
                       >
-                        <img src={getImageUrl(u.profile_picture) ?? avatarExample} alt={u.full_name ?? u.email} className="w-8 h-8 rounded-full object-cover" />
+                        <img src={getImageUrl(u.profile_picture) || avatarExample} alt={u.full_name ?? u.email} className="w-8 h-8 rounded-full object-cover" />
                         <div>
                           <div className="text-sm font-medium text-[#222]">{u.full_name ?? u.email}</div>
                           <div className="text-xs text-[#666]">{u.email}</div>
@@ -749,7 +773,7 @@ export default function EventModal({
                 <div className="mt-3 flex flex-wrap gap-2">
                   {selectedGuests.map((g) => (
                     <div key={g.email} className="flex items-center gap-2 px-3 py-1 rounded-full border bg-gray-50">
-                      <img src={getImageUrl(g.profile_picture) ?? avatarExample} alt={g.full_name ?? g.email} className="w-6 h-6 rounded-full object-cover" />
+                      <img src={getImageUrl(g.profile_picture) || avatarExample} alt={g.full_name ?? g.email} className="w-6 h-6 rounded-full object-cover" />
                       <div className="text-sm text-[#444] max-w-[220px] truncate">{g.email}</div>
                       <button onClick={() => removeGuest(g.email)} className="ml-2 text-xs px-2 py-0">✕</button>
                     </div>

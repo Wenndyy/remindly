@@ -1,3 +1,4 @@
+from app.email_service import send_email
 from fastapi import FastAPI, Depends, HTTPException, Body, Request ,status, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session,joinedload
@@ -1365,3 +1366,67 @@ def parse_natural_language_task(
         type="task",
         data=result.get("data")
     )
+
+
+@app.post("/events/{event_id}/invite")
+def invite_guests_to_event(
+    event_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    event = db.query(Event).filter(
+        Event.id == event_id,
+        Event.user_id == current_user.id
+    ).first()
+
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    if not event.guest:
+        raise HTTPException(status_code=400, detail="Guest list is empty")
+
+  
+
+    ai_invite = get_ai_service()
+    email_content = ai_invite.generate_invitation_email(
+        event_title=event.title,
+        event_date=event.start_date,
+        event_time=event.start_time,
+        meeting_type=event.meeting_type,
+        location=event.location,
+        meeting_link=event.location,
+        organizer_name=current_user.full_name or current_user.email,
+        description=event.description
+    )
+
+    guest_emails = [e.strip() for e in event.guest.split(",") if e.strip()]
+
+
+    failed = []
+
+    for email in guest_emails:
+        try:
+            send_email(
+                to=email,
+                subject=email_content["subject"],
+                body=email_content["body"]
+                
+            )
+        except Exception:
+            failed.append(email)
+
+    # Optional log notification
+    notif = Notification(
+        user_id=current_user.id,
+        event_id=event.id,
+        title=email_content["subject"],
+        message=f"Invitation sent to {len(guest_emails)} guests",
+        notification_type="invitation"
+    )
+    db.add(notif)
+    db.commit()
+
+    return {
+        "sent": len(guest_emails) - len(failed),
+        "failed": failed
+    }

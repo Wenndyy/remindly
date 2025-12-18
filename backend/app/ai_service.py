@@ -717,6 +717,204 @@ For recurring: recurrence = {{"frequency": "WEEKLY", "by_day": ["MO", "WE", "FR"
                 "message": "AI service is temporarily unavailable. Please try again later."
             }
 
+    def generate_invitation_email(
+        self,
+        event_title: str,
+        event_date: str,
+        event_time: Optional[str],
+        meeting_type: str,  # 'onsite' | 'online'
+        location: Optional[str],
+        meeting_link: Optional[str],
+        organizer_name: str,
+        description: Optional[str]
+    ) -> Dict[str, str]:
+        """
+        Generate formal invitation email for guests (email-only),
+        based on meeting_type: onsite or online.
+        """
+
+        cache_key = f"email_invite_{event_title}_{event_date}_{meeting_type}"
+        cached = _get_from_cache(cache_key)
+        if cached:
+            return cached
+
+        # Validasi meeting_type
+        meeting_type = meeting_type.lower()
+        # Tentukan label lokasi berdasarkan meeting_type
+        if meeting_type == "online":
+            location_label = "Tautan Meeting"
+            location_value = location or "Akan diinformasikan"
+        else:
+            location_label = "Tempat Acara"
+            location_value = location or "Akan diinformasikan"
+
+        context_parts = [
+            f"Judul Acara: {event_title}",
+            f"Tanggal: {event_date}",
+            f"Waktu: {event_time or 'Menyesuaikan'}",
+            f"{location_label}: {location_value}",
+            f"Penyelenggara: {organizer_name}",
+            f"Jenis Acara: {'Tatap Muka (Onsite)' if meeting_type == 'onsite' else 'Daring (Online)'}",
+        ]
+
+        
+
+
+        if description:
+            context_parts.append(f"Deskripsi: {description[:200]}")
+
+        system_prompt = (
+            "Kamu adalah asisten profesional yang MENULIS EMAIL UNDANGAN RESMI.\n"
+            "Gunakan Bahasa Indonesia FORMAL dan BAKU.\n\n"
+            "ATURAN WAJIB:\n"
+            "- Gunakan sapaan umum: 'Yth. Bapak/Ibu'\n"
+            "- Jangan menyebut nama penerima\n"
+            "- Jangan gunakan emoji\n"
+            "- Jelaskan dengan jelas apakah acara ONLINE atau ONSITE\n"
+            "- Jika ONLINE, sertakan tautan meeting\n"
+            "- Jika ONSITE, sertakan lokasi acara\n"
+            "- Sertakan ajakan konfirmasi kehadiran\n\n"
+            "STRUKTUR EMAIL WAJIB:\n"   
+            "1. Salam pembuka\n"
+            "2. Maksud undangan\n"
+            "3. Detail acara (tanggal, waktu, lokasi/tautan)\n"
+            "4. Ajakan konfirmasi kehadiran\n"
+            "5. Penutup dan nama penyelenggara\n\n"
+            "FORMAT OUTPUT (HARUS PERSIS):\n"
+            "Subject: <judul email>\n"
+            "Body:\n"
+            "<isi email lengkap tanpa markdown>"
+        )
+
+        user_prompt = (
+            "KONTEKS ACARA:\n"
+            + "\n".join(context_parts)
+            + "\n\nTulis email undangan resmi sesuai aturan di atas."
+        )
+
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            "max_tokens": 450,
+            "temperature": 0.3
+        }
+
+        try:
+            with httpx.Client(timeout=30.0) as client:
+                response = client.post(
+                    self.base_url,
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json=payload
+                )
+                response.raise_for_status()
+
+                content = response.json()["choices"][0]["message"]["content"].strip()
+                parsed = self._parse_invitation_email(content)
+
+                if parsed["subject"] and parsed["body"]:
+                    _set_cache(cache_key, parsed)
+                    return parsed
+
+        except Exception as e:
+            print(f"[AI Service] Invitation email generation failed: {str(e)}")
+
+        fallback = self._fallback_invitation_by_type(
+            event_title,
+            event_date,
+            event_time,
+            meeting_type,
+            location,
+            meeting_link,
+            organizer_name,
+        )
+        _set_cache(cache_key, fallback)
+        return fallback
+
+
+
+
+    def _parse_invitation_email(self, text: str) -> Dict[str, str]:
+        subject = ""
+        body_lines = []
+        in_body = False
+
+        for line in text.splitlines():
+            line = line.strip()
+            if line.lower().startswith("subject:"):
+                subject = line.replace("Subject:", "").strip()
+            elif line.lower().startswith("body"):
+                in_body = True
+            elif in_body:
+                body_lines.append(line)
+
+        body = "\n".join(body_lines).strip()
+
+        return {
+            "subject": subject,
+            "body": body
+        }
+
+    def _fallback_invitation_by_type(
+        self,
+        event_title: str,
+        event_date: str,
+        event_time: Optional[str],
+        meeting_type: str,
+        location: Optional[str],
+        meeting_link: Optional[str],
+        organizer_name: str
+    ) -> Dict[str, str]:
+
+        is_online = meeting_type == "online"
+
+        subject = f"Undangan {'Rapat' if is_online else 'Acara'}: {event_title}"
+
+        location_label = "Tautan Meeting" if is_online else "Tempat Acara"
+        location_value = (
+            meeting_link if is_online and meeting_link
+            else location if location
+            else "Akan diinformasikan"
+        )
+
+        meeting_phrase = (
+            "yang akan dilaksanakan secara daring"
+            if is_online
+            else "yang akan diselenggarakan secara luring"
+        )
+
+        body = f"""
+    Yth. Bapak/Ibu,
+
+Dengan hormat,
+
+Sehubungan dengan akan dilaksanakannya kegiatan "{event_title}", bersama ini kami mengundang
+Bapak/Ibu untuk berkenan menghadiri acara tersebut {meeting_phrase}, dengan rincian sebagai berikut:
+
+Judul Acara   : {event_title}
+Hari/Tanggal : {event_date}
+Waktu         : {event_time or 'Menyesuaikan'}
+{location_label} : {location_value}
+
+Demikian undangan ini kami sampaikan. Besar harapan kami Bapak/Ibu dapat
+berkenan hadir serta melakukan konfirmasi kehadiran sebelum acara berlangsung.
+
+Atas perhatian dan partisipasi Bapak/Ibu, kami ucapkan terima kasih.
+
+Hormat kami,
+
+Panitia
+    """
+
+        return {
+            "subject": subject,
+            "body": body.strip()
+        }
 
 # Singleton instance
 ai_service = MistralAIService()

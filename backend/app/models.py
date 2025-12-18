@@ -102,3 +102,27 @@ class Notification(Base):
     # Relationships
     user = relationship("User", back_populates="notifications")
     event = relationship("Event", back_populates="notifications")
+
+
+
+class EventInvitation(Base):
+    __tablename__ = "event_invitations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"))
+    email = Column(String, nullable=False)
+    status = Column(String, default="invited")  # invited, accepted, declined
+    sent_at = Column(Integer, nullable=True)
+
+    event = relationship("Event")
+
+
+class EmailLog(Base):
+    __tablename__ = "email_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_email = Column(String, nullable=False)
+    event_id = Column(Integer, nullable=True)
+    email_type = Column(String)  # invitation, reminder
+    status = Column(String)      # sent, failed
+    created_at = Column(Integer, default=lambda: int(time.time()))

@@ -12,6 +12,13 @@ class Settings(BaseSettings):
     mistral_api_key: Optional[str] = None
     mistral_api: Optional[str] = None
 
+    # Email (SMTP) Configuration
+    smtp_host: str
+    smtp_port: int
+    smtp_user: str
+    smtp_password: str
+    email_from: str
+
     class Config:
         env_file = ".env"
      

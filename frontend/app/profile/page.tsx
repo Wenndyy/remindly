@@ -384,22 +384,22 @@ export default function ProfilePage() {
                                 {/* Name Fields */}
                                 <div className="grid grid-cols-2 gap-4 mb-4">
                                     <div>
-                                        <label className="block text-sm text-gray-600 mb-1">First Name</label>
+                                        <label className="block text-sm text-[#55565B] mb-1">First Name</label>
                                         <input
                                             type="text"
                                             value={editForm.first_name}
                                             onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })}
-                                            className="w-full border rounded-lg px-3 py-2 text-sm"
+                                            className="w-full border rounded-lg px-3 py-2 text-sm text-[#55565B]"
                                             placeholder="First name"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm text-gray-600 mb-1">First Name</label>
+                                        <label className="block text-sm text-[#55565B] mb-1">First Name</label>
                                         <input
                                             type="text"
                                             value={editForm.last_name}
                                             onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })}
-                                            className="w-full border rounded-lg px-3 py-2 text-sm"
+                                            className="w-full border rounded-lg px-3 py-2 text-sm text-[#55565B]"
                                             placeholder="Last name"
                                         />
                                     </div>
@@ -407,18 +407,18 @@ export default function ProfilePage() {
 
                                 {/* Date of Birth */}
                                 <div className="mb-4">
-                                    <label className="block text-sm text-gray-600 mb-1">Date of Birth</label>
+                                    <label className="block text-sm text-[#55565B] mb-1">Date of Birth</label>
                                     <input
                                         type="date"
                                         value={editForm.date_of_birth}
                                         onChange={(e) => setEditForm({ ...editForm, date_of_birth: e.target.value })}
-                                        className="w-full border rounded-lg px-3 py-2 text-sm"
+                                        className="w-full border rounded-lg px-3 py-2 text-sm text-[#55565B]"
                                     />
                                 </div>
 
                                 {/* Email (read-only) */}
                                 <div className="mb-4">
-                                    <label className="block text-sm text-gray-600 mb-1">Email Address</label>
+                                    <label className="block text-sm text-[#55565B] mb-1">Email Address</label>
                                     <input
                                         type="email"
                                         value={profile?.email || ""}
@@ -429,36 +429,36 @@ export default function ProfilePage() {
 
                                 {/* Phone Number */}
                                 <div className="mb-4">
-                                    <label className="block text-sm text-gray-600 mb-1">Phone Number</label>
+                                    <label className="block text-sm text-[#55565B] mb-1">Phone Number</label>
                                     <input
                                         type="tel"
                                         value={editForm.phone_number}
                                         onChange={(e) => setEditForm({ ...editForm, phone_number: e.target.value })}
-                                        className="w-full border rounded-lg px-3 py-2 text-sm"
+                                        className="w-full border rounded-lg px-3 py-2 text-sm text-[#55565B]"
                                         placeholder="Phone number"
                                     />
                                 </div>
 
                                 {/* Country */}
                                 <div className="mb-4">
-                                    <label className="block text-sm text-gray-600 mb-1">Country</label>
+                                    <label className="block text-sm text-[#55565B] mb-1">Country</label>
                                     <input
                                         type="text"
                                         value={editForm.country}
                                         onChange={(e) => setEditForm({ ...editForm, country: e.target.value })}
-                                        className="w-full border rounded-lg px-3 py-2 text-sm"
+                                        className="w-full border rounded-lg px-3 py-2 text-sm text-[#55565B]"
                                         placeholder="Country"
                                     />
                                 </div>
 
                                 {/* City */}
                                 <div className="mb-4">
-                                    <label className="block text-sm text-gray-600 mb-1">City</label>
+                                    <label className="block text-sm text-[#55565B] mb-1">City</label>
                                     <input
                                         type="text"
                                         value={editForm.city}
                                         onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
-                                        className="w-full border rounded-lg px-3 py-2 text-sm"
+                                        className="w-full border rounded-lg px-3 py-2 text-sm text-[#55565B]"
                                         placeholder="City"
                                     />
                                 </div>

@@ -66,11 +66,11 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex bg-linear-to-br" style={{ backgroundImage: "url('/background.svg')" }}>
+    <div className="min-h-screen flex bg-cover bg-center" style={{ backgroundImage: "url('/background.svg')" }}>
       <div className="hidden lg:flex lg:w-1/3 items-center justify-center ">
         <img src="/notification.svg" alt="Ilustrasi notifikasi" />
       </div>
-      <div className="relative  flex flex-col justify-center items-center w-full lg:w-2/3 bg-[#F3F8F3] lg:rounded-l-[3rem] shadow-xl px-10 py-12">
+      <div className="relative  flex flex-col justify-center items-center w-full lg:w-2/3 bg-white lg:rounded-l-[3rem] shadow-xl px-10 py-12">
          <div className="absolute top-6 left-6 flex items-center gap-3 justify-center ">
             <img src="/logo_red.svg" alt="Logo" className="w-[35px] h-[35px]" />
             <div className={`font-bold text-2xl select-none transition-opacity bg-linear-to-r from-[#B6252A] to-[#501012] bg-clip-text text-transparent text-center`}>Remindly</div>

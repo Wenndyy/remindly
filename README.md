@@ -4,42 +4,58 @@
 
 ## 📖 Deskripsi Proyek
 
-**Remindly** adalah sistem berbasis web yang dirancang untuk membantu civitas akademika dalam:
-- **Autentikasi dan Otorisasi** pengguna dengan JWT
-- Mengatur dan memonitor kegiatan (Task Management)
-- Mendapatkan pengingat otomatis berbasis **Artificial Intelligence (AI)**
-- Mencegah jadwal bentrok antar kegiatan akademik
-- **Role-Based Access Control** (User & Admin)
+**Remindly** adalah sistem manajemen jadwal dan kegiatan berbasis web yang dirancang untuk membantu civitas akademika dalam mengelola waktu secara efektif. Sistem ini mengintegrasikan **autentikasi aman**, **manajemen event & project**, serta **Artificial Intelligence (AI)** untuk reminder, deteksi konflik jadwal, dan asisten penjadwalan.
 
 ---
 
 ## 🎯 Tujuan Pengembangan
 
-1. Menyediakan sistem autentikasi yang aman dengan JWT tokens
-2. Implementasi role-based access 
-3. Menyediakan platform web untuk pengingat kegiatan akademik
-4. Meningkatkan efisiensi manajemen waktu dan tugas
-5. Memanfaatkan AI untuk otomatisasi reminder
-6. Mengintegrasikan seluruh aktivitas akademik dalam satu sistem terpusat
+1. Menyediakan sistem autentikasi yang aman dan scalable menggunakan JWT  
+2. Mengimplementasikan role-based access control  
+3. Menyediakan platform terpusat untuk manajemen jadwal dan kegiatan  
+4. Meningkatkan efisiensi manajemen waktu pengguna  
+5. Memanfaatkan AI untuk reminder, conflict detection, dan scheduling  
+6. Mendukung kolaborasi melalui event invitation berbasis email  
+
 
 ---
 
 ## 🚀 Fitur Utama
 
 ### 🔐 Authentication & Authorization
-- ✅ User Registration dengan validasi
-- ✅ Login dengan JWT (Access & Refresh Token)
-- ✅ Password hashing menggunakan bcrypt
-- ✅ Role-based access control (User/Admin)
-- ✅ Password reset dengan secure token
-- ✅ Logout dengan token invalidation
-- ✅ Protected routes
+- User Registration & Login
+- JWT Access Token & Refresh Token
+- Password hashing (bcrypt)
+- Role-based access (User & Admin)
+- Logout & token invalidation
+- Password reset dengan secure token
 
-### 📋 Task Management (Coming Soon)
-- 📌 Create, Read, Update, Delete tasks
-- 🔔 AI-powered reminders
-- 📅 Schedule conflict detection
-- 🏷️ Task categorization
+---
+
+### 📅 Event, Calendar & Project
+- CRUD Event (Calendar)
+- CRUD Project
+- Event berdasarkan tanggal & rentang waktu
+- Guest list & event invitation
+- Upload foto profil user
+
+---
+
+### 🔔 Notification
+- Notifikasi event
+- AI-generated reminder
+- Read / unread notification
+- Notification counter
+
+---
+
+### 🧠 Artificial Intelligence (AI)
+- AI Schedule Assistant (Chat)
+- AI Schedule Conflict Detection
+- AI Alternative Time Suggestions
+- AI Reminder Generator
+- Natural Language Task Parsing
+- AI-generated Email Invitation
 
 ---
 
@@ -154,26 +170,43 @@ Frontend akan aktif di:
 
 ### 🔐 Authentication
 
-| Method | Endpoint | Description | Auth Required |
-|--------|----------|-------------|---------------|
-| `POST` | `/register` | Register user baru | ❌ |
-| `POST` | `/login` | Login dan dapatkan tokens | ❌ |
-| `POST` | `/logout` | Logout user | ✅ |
-| `POST` | `/refresh` | Refresh access token | ✅ |
+| Method | Endpoint    | Description   |
+| ------ | ----------- | ------------- |
+| POST   | `/register` | Register user |
+| POST   | `/login`    | Login         |
+| POST   | `/logout`   | Logout        |
+| POST   | `/refresh`  | Refresh token |
 
 
-### 🛡️ Protected Routes
 
-| Method | Endpoint | Description | Role |
-|--------|----------|-------------|------|
-| `GET` | `/user-dashoard` | User dashboard | User |
-| `GET` | `/admin-dashboard` | Admin dashboard | Admin |
+### 📅 Event & Calendar
 
-### 🏥 Utility
+| Method | Endpoint              |
+| ------ | --------------------- |
+| GET    | `/events`             |
+| POST   | `/events`             |
+| PUT    | `/events/{id}`        |
+| DELETE | `/events/{id}`        |
+| POST   | `/events/{id}/invite` |
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/health` | Health check |
+
+### 🔔 Notification
+
+| Method | Endpoint                   |
+| ------ | -------------------------- |
+| GET    | `/notifications`           |
+| GET    | `/notifications/upcoming`  |
+| PATCH  | `/notifications/{id}/read` |
+| PATCH  | `/notifications/read-all`  |
+
+### 🧠 AI
+
+| Method | Endpoint                        |
+| ------ | ------------------------------- |
+| POST   | `/ai/chat`                      |
+| POST   | `/ai/suggest-alternative-times` |
+| POST   | `/ai/parse-task`                |
+
 
 ---
 
@@ -189,6 +222,8 @@ remindly/
 │   │   ├── auth_utils.py        # JWT & password utilities
 │   │   ├── database.py          # Database configuration
 │   │   ├── models.py            # SQLAlchemy models
+│   │   ├── ai_service.py
+│   │   ├── email_service.py
 │   │   └── schemas.py           # Pydantic schemas
 │   ├── .env                     # Environment variables (NOT in git)
 │   ├── .env.example             # Template for .env
@@ -196,12 +231,12 @@ remindly/
 │   ├── requirements.txt         # Python dependencies
 │   └── remindly.db              # SQLite database (auto-generated)
 │
-├── frontend/ (Coming Soon)
-│   ├── src/
+├── frontend/
+│   ├── app/
+│   ├── contexts/
 │   ├── public/
 │   ├── package.json
-│   └── ...
-│
+│   └── tailwind.config.ts
 │
 └── README.md
 ```
@@ -273,9 +308,9 @@ Project ini menggunakan **MIT License**.
 
 ## 👨‍💻 Author & Contributors
 
-- **Your Name** - Initial work - [@yourusername](https://github.com/yourusername)
+- **Wendy Noer Isnaeni** - Initial work - [@yourusername](https://github.com/Wenndyy)
 
-Lihat juga daftar [contributors](https://github.com/yourusername/remindly/contributors) yang berpartisipasi dalam project ini.
+Lihat juga daftar [contributors](https://github.com/Wenndyy/remindly/contributors) yang berpartisipasi dalam project ini.
 
 ---
 
@@ -288,14 +323,7 @@ Lihat juga daftar [contributors](https://github.com/yourusername/remindly/contri
 
 ---
 
-## 📞 Support & Contact
 
-Untuk pertanyaan atau masalah:
-- **Issues**: [GitHub Issues](https://github.com/yourusername/remindly/issues)
-- **Email**: your.email@example.com
-- **Discord**: Your Discord Server (optional)
-
----
 
 ## 📊 Project Status
 

@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     # Email (SMTP) Configuration
     smtp_host: str
     smtp_port: int
-    smtp_user: str
+    smtp_username: str
     smtp_password: str
     email_from: str
 

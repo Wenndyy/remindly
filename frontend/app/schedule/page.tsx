@@ -51,6 +51,29 @@ type Project = {
   meetings?: number;
 };
 
+// Helper to resolve image URL
+const getImageUrl = (url?: string | null): string | null => {
+  if (!url) return null;
+  if (
+    url.startsWith("http://") ||
+    url.startsWith("https://") ||
+    url.startsWith("data:")
+  ) {
+    return url;
+  }
+  return `http://127.0.0.1:8000${url}`;
+};
+
+// Helper to get initials from name or email
+const getInitials = (name: string | null | undefined, email?: string): string => {
+  const source = name || email || "?";
+  const parts = source.trim().split(/\s+/);
+  if (parts.length >= 2 && parts[0] && parts[1]) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return parts[0] ? parts[0][0].toUpperCase() : "?";
+};
+
 
 export default function TaskPage({
   initialUser = null,
@@ -66,6 +89,7 @@ export default function TaskPage({
   const [searchQuery, setSearchQuery] = useState("");
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+
   const [editingEvent, setEditingEvent] = useState<EventItem | null>(null);
   const [events, setEvents] = useState<ScheduleEvent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -77,6 +101,11 @@ export default function TaskPage({
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(null);
   const [eventDetails, setEventDetails] = useState<any>(null);
+
+  // Multi-select state
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedEventIds, setSelectedEventIds] = useState<Set<string>>(new Set());
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
 
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -241,6 +270,16 @@ export default function TaskPage({
 
   useEffect(() => {
     loadInitialData();
+
+    // Listen for updates from FloatingAIChat
+    const handleEventsUpdated = () => {
+      reloadEvents();
+    };
+
+    window.addEventListener('events-updated', handleEventsUpdated);
+    return () => {
+      window.removeEventListener('events-updated', handleEventsUpdated);
+    };
   }, [router]);
 
   const reloadEvents = async () => {
@@ -276,6 +315,8 @@ export default function TaskPage({
         participants: raw.participants,
         guest_list: raw.guest_list || [],
         invitedBy: raw.organizer_name || raw.organizer_email,
+        organizer_name: raw.organizer_name,
+        organizer_profile_picture: raw.organizer_profile_picture,
         project_id: raw.project_id,
         project_name: raw.project_name,
         project_color: raw.project_color,
@@ -363,7 +404,9 @@ export default function TaskPage({
       console.error("Error loading event details:", error);
 
       // Fallback
+      // Fallback
       if (ev) {
+
         const proj = projects.find((p) => p.name === ev.project);
         const eventData: EventItem = {
           ...ev,
@@ -373,6 +416,7 @@ export default function TaskPage({
         setEditingEvent(eventData);
         setOriginalEventData(eventData);
       } else {
+
         const today = new Date().toISOString().split('T')[0];
         setEditingEvent({
           title: "",
@@ -513,6 +557,51 @@ export default function TaskPage({
     }
   };
 
+  // Multi-select handlers
+  const toggleSelectMode = () => {
+    setIsSelectMode(!isSelectMode);
+    setSelectedEventIds(new Set());
+  };
+
+  const toggleEventSelection = (eventId: string) => {
+    setSelectedEventIds(prev => {
+      const next = new Set(prev);
+      if (next.has(eventId)) {
+        next.delete(eventId);
+      } else {
+        next.add(eventId);
+      }
+      return next;
+    });
+  };
+
+  const selectAllEvents = () => {
+    if (selectedEventIds.size === filteredEvents.length) {
+      setSelectedEventIds(new Set());
+    } else {
+      setSelectedEventIds(new Set(filteredEvents.map(e => e.id)));
+    }
+  };
+
+  const confirmBulkDelete = async () => {
+    try {
+      const token = localStorage.getItem("access_token");
+      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+
+      for (const id of selectedEventIds) {
+        await axiosClient.delete(`/events/${id}`, config);
+      }
+
+      await reloadEvents();
+      setSelectedEventIds(new Set());
+      setShowBulkDeleteConfirm(false);
+      setIsSelectMode(false);
+    } catch (err: any) {
+      console.error("Failed to bulk delete events:", err);
+      alert("Gagal menghapus beberapa event");
+    }
+  };
+
   const photo = user?.photoURL ?? null;
   const name = user?.name ?? "User";
 
@@ -543,6 +632,35 @@ export default function TaskPage({
                 style={{ background: '#B6252A' }}
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation Modal */}
+      {showBulkDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-60">
+          <div className="bg-white rounded-lg p-6 w-[370px] shadow-lg text-center">
+            <h3 className="text-2xl font-semibold mb-2 text-black">Delete {selectedEventIds.size} Events?</h3>
+            <p className="text-[16px] text-[#55565B] mb-6">
+              Are you sure you want to delete {selectedEventIds.size} selected events? This action cannot be undone.
+            </p>
+
+            <div className="flex justify-center gap-4">
+              <button
+                onClick={() => setShowBulkDeleteConfirm(false)}
+                className="px-6 py-2 rounded-lg text-black bg-[#E9EDE9] w-[148px] items-center justify-center flex"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={confirmBulkDelete}
+                className="px-6 py-2 rounded-lg text-white w-[148px] items-center justify-center flex"
+                style={{ background: '#B6252A' }}
+              >
+                Delete All
               </button>
             </div>
           </div>
@@ -593,17 +711,38 @@ export default function TaskPage({
             {/* Review title & invited by */}
             <div className="mb-4">
               <h3 className="text-2xl font-bold text-gray-900 mt-6">Review</h3>
-              <p className="text-sm text-gray-500 mt-4">
-                {/* fallback ke beberapa kemungkinan nama field dari API */}
-                Invited by:{" "}
-                <span className="text-gray-700 font-medium ">
-                  {eventDetails.invitedBy ??
-                    eventDetails.invited_by ??
-                    eventDetails.organizer ??
-                    eventDetails.host ??
-                    "Unknown"}
-                </span>
-              </p>
+              <div className="flex items-center gap-2 mt-4">
+                <span className="text-sm text-gray-500">Invited by:</span>
+                {(() => {
+                  const organizerName = eventDetails.organizer_name ?? eventDetails.invitedBy ?? eventDetails.invited_by ?? eventDetails.organizer ?? eventDetails.host ?? "Unknown";
+                  const organizerPhoto = eventDetails.organizer_profile_picture;
+
+                  return (
+                    <div className="flex items-center gap-2">
+                      {organizerPhoto ? (
+                        <img
+                          src={getImageUrl(organizerPhoto) || ""}
+                          alt={organizerName}
+                          className="w-6 h-6 rounded-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                            (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                          }}
+                        />
+                      ) : null}
+                      {!organizerPhoto && (
+                        <div
+                          className="w-6 h-6 rounded-full flex items-center justify-center text-xs text-white font-semibold"
+                          style={{ backgroundColor: '#6B7280' }}
+                        >
+                          {getInitials(organizerName, undefined)}
+                        </div>
+                      )}
+                      <span className="text-gray-700 font-medium">{organizerName}</span>
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
 
             {/* Info rows */}
@@ -701,22 +840,28 @@ export default function TaskPage({
                             {displayGuests.length > 0 ? (
                               <>
                                 <div className="flex -space-x-3">
-                                  {displayGuests.map((guest: { name: any; email: any; photo: any; }, index: Key | null | undefined) => {
+                                  {displayGuests.map((guest: { name?: any; full_name?: any; email: any; photo?: any; profile_picture?: any; }, index: Key | null | undefined) => {
                                     const guestName = typeof guest === 'string' ? guest :
-                                      guest?.name ?? guest?.email ?? 'Guest';
-                                    const guestPhoto = typeof guest === 'object' ? guest.photo : null;
+                                      guest?.full_name ?? guest?.name ?? guest?.email ?? 'Guest';
+                                    const guestEmail = typeof guest === 'object' ? guest.email : null;
+                                    const guestPhoto = typeof guest === 'object' ? (guest.profile_picture ?? guest.photo) : null;
 
                                     return (
                                       <div
                                         key={index}
-                                        className="mr-2 w-[50px] h-[50px] rounded-full border-2 border-white bg-gray-100 flex items-center justify-center text-sm font-medium text-gray-800"
+                                        className="mr-2 w-[50px] h-[50px] rounded-full border-2 border-white bg-gray-100 flex items-center justify-center text-sm font-medium text-gray-800 overflow-hidden"
                                         style={{ boxShadow: "0 1px 0 rgba(0,0,0,0.04)" }}
                                         title={guestName}
                                       >
                                         {guestPhoto ? (
-                                          <img src={guestPhoto} className="w-full h-full rounded-full object-cover" alt={guestName} />
+                                          <img src={getImageUrl(guestPhoto) || ""} className="w-full h-full rounded-full object-cover" alt={guestName} />
                                         ) : (
-                                          guestName.charAt(0).toUpperCase()
+                                          <div
+                                            className="w-full h-full rounded-full flex items-center justify-center text-white font-semibold"
+                                            style={{ backgroundColor: '#6B7280' }}
+                                          >
+                                            {getInitials(guestName, guestEmail)}
+                                          </div>
                                         )}
                                       </div>
                                     );
@@ -809,7 +954,45 @@ export default function TaskPage({
             </svg>
             Add Event
           </button>
+
+          <button
+            onClick={toggleSelectMode}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${isSelectMode
+              ? "bg-gray-600 text-white hover:bg-gray-700"
+              : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              }`}
+          >
+            {isSelectMode ? "Cancel" : "Select"}
+          </button>
         </div>
+
+        {/* Multi-select controls */}
+        {isSelectMode && (
+          <div className="flex items-center justify-between mb-4 p-3 bg-gray-50 rounded-lg">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={selectAllEvents}
+                className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+              >
+                {selectedEventIds.size === filteredEvents.length ? "Deselect All" : "Select All"}
+              </button>
+              <span className="text-sm text-gray-600">
+                {selectedEventIds.size} selected
+              </span>
+            </div>
+            {selectedEventIds.size > 0 && (
+              <button
+                onClick={() => setShowBulkDeleteConfirm(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Delete Selected ({selectedEventIds.size})
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="space-y-3">
           {filteredEvents.map((event) => (
@@ -822,6 +1005,18 @@ export default function TaskPage({
                 style={{ backgroundColor: event.projectColorClass || '#6B7280' }}></div>
 
               <div className="flex items-center justify-between pl-3">
+                {/* Checkbox for multi-select */}
+                {isSelectMode && (
+                  <div className="mr-4">
+                    <input
+                      type="checkbox"
+                      checked={selectedEventIds.has(event.id)}
+                      onChange={() => toggleEventSelection(event.id)}
+                      className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                    />
+                  </div>
+                )}
+
                 <div className="flex-1">
                   <h3 className="text-base font-semibold text-gray-900 mb-1">{event.title}</h3>
                   <p className="text-sm text-gray-500">{formatDate(event.dateStart)}</p>
@@ -910,6 +1105,7 @@ export default function TaskPage({
 
       <EventModal
         open={modalOpen}
+
         initial={
           editingEvent
             ? {

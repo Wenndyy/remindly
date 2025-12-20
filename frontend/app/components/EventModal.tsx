@@ -37,6 +37,19 @@ const getImageUrl = (url?: string | null): string | null => {
   return `http://127.0.0.1:8000${url}`;
 };
 
+// Helper to get initials from name or email
+const getInitials = (name: string | null | undefined, email: string): string => {
+  if (name && name !== email) {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return parts[0][0].toUpperCase();
+  }
+  // Fallback to email first character
+  return email[0].toUpperCase();
+};
+
 
 
 type User = {
@@ -65,16 +78,20 @@ function debounce(fn: (q: string) => void, wait = 300): (q: string) => void {
 export default function EventModal({
   open,
   initial,
+
   onClose,
   onSave,
   existingEvents = [],
 }: {
   open: boolean;
   initial?: Partial<EventForm> | null;
+
   onClose: () => void;
   onSave: (data: EventForm) => void;
   existingEvents?: EventForConflictCheck[];
 }) {
+
+
   const empty: EventForm = {
     title: "",
     description: "",
@@ -188,8 +205,38 @@ export default function EventModal({
           .split(",")
           .map((e: string) => e.trim())
           .filter(Boolean);
-        const pre = emails.map((em: string) => ({ email: em, full_name: em, profile_picture: avatarExample }));
-        setSelectedGuests(pre);
+
+        // Fetch user data for each email to get profile pictures
+        const fetchGuestData = async () => {
+          const token = localStorage.getItem("access_token");
+          const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+
+          const guestPromises = emails.map(async (email: string) => {
+            try {
+              // Try to find user by email
+              const res = await axiosClient.get<User[]>(`/users?query=${encodeURIComponent(email)}&limit=5`, config);
+              const matchedUser = res.data?.find((u: User) => u.email.toLowerCase() === email.toLowerCase());
+              if (matchedUser) {
+                return {
+                  email: matchedUser.email,
+                  full_name: matchedUser.full_name ?? matchedUser.email,
+                  profile_picture: matchedUser.profile_picture ?? null,
+                };
+              }
+            } catch (err) {
+              console.error(`Failed to fetch user data for ${email}:`, err);
+            }
+            // Fallback for non-registered or failed lookups
+            return { email, full_name: email, profile_picture: null };
+          });
+
+          const guestData = await Promise.all(guestPromises);
+          setSelectedGuests(guestData);
+        };
+
+        fetchGuestData();
+      } else {
+        setSelectedGuests([]);
       }
     } else {
       setForm(empty);
@@ -566,7 +613,7 @@ export default function EventModal({
           aria-modal="true"
         >
           <div style={{ background: "linear-gradient(90deg,#8b1b1f,#5a0e12)", color: "#fff", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ fontSize: 16, fontWeight: 700 }}>{initial ? "Edit Event" : "Add Event"}</div>
+            <div style={{ fontSize: 16, fontWeight: 700 }}>{initial?.id ? "Edit Event" : "Add Event"}</div>
             <button onClick={handleCancelClick} style={{ color: "#fff", background: "transparent", border: "none", fontSize: 18 }}>✕</button>
           </div>
 
@@ -751,7 +798,16 @@ export default function EventModal({
                         onClick={() => addGuestFromUser(u)}
                         className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-gray-50"
                       >
-                        <img src={getImageUrl(u.profile_picture) || avatarExample} alt={u.full_name ?? u.email} className="w-8 h-8 rounded-full object-cover" />
+                        {u.profile_picture ? (
+                          <img src={getImageUrl(u.profile_picture) || ""} alt={u.full_name ?? u.email} className="w-8 h-8 rounded-full object-cover" />
+                        ) : (
+                          <div
+                            className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold text-white"
+                            style={{ backgroundColor: '#6B7280' }}
+                          >
+                            {getInitials(u.full_name, u.email)}
+                          </div>
+                        )}
                         <div>
                           <div className="text-sm font-medium text-[#222]">{u.full_name ?? u.email}</div>
                           <div className="text-xs text-[#666]">{u.email}</div>
@@ -773,7 +829,16 @@ export default function EventModal({
                 <div className="mt-3 flex flex-wrap gap-2">
                   {selectedGuests.map((g) => (
                     <div key={g.email} className="flex items-center gap-2 px-3 py-1 rounded-full border bg-gray-50">
-                      <img src={getImageUrl(g.profile_picture) || avatarExample} alt={g.full_name ?? g.email} className="w-6 h-6 rounded-full object-cover" />
+                      {g.profile_picture ? (
+                        <img src={getImageUrl(g.profile_picture) || ""} alt={g.full_name ?? g.email} className="w-6 h-6 rounded-full object-cover" />
+                      ) : (
+                        <div
+                          className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold text-white"
+                          style={{ backgroundColor: '#6B7280' }}
+                        >
+                          {getInitials(g.full_name, g.email)}
+                        </div>
+                      )}
                       <div className="text-sm text-[#444] max-w-[220px] truncate">{g.email}</div>
                       <button onClick={() => removeGuest(g.email)} className="ml-2 text-xs px-2 py-0">✕</button>
                     </div>

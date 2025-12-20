@@ -14,6 +14,8 @@ type ScheduleItem = {
     end_time: string;
     notes?: string;
     category?: string;
+    meeting_type?: string;  // 'online' or 'onsite'
+    location?: string;      // Location if specified by user
 };
 
 type ScheduleProposal = {
@@ -36,7 +38,7 @@ type ChatMessage = {
 };
 
 export default function FloatingAIChat() {
-    const { messages, setMessages, isOpen, setIsOpen } = useChatContext();
+    const { messages, setMessages, isOpen, setIsOpen, clearMessages, setUserId } = useChatContext();
     const { user, loading: userLoading } = useUser();
 
     const [inputValue, setInputValue] = useState("");
@@ -44,8 +46,20 @@ export default function FloatingAIChat() {
     const [existingEvents, setExistingEvents] = useState<EventForConflictCheck[]>([]);
     const [addingSchedule, setAddingSchedule] = useState<string | null>(null);
     const [addResult, setAddResult] = useState<{ messageId: string; success: number; conflicts: number; errors: string[] } | null>(null);
+    const [showMenu, setShowMenu] = useState(false);
+    const [showClearConfirm, setShowClearConfirm] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    // Sync userId with user context for scoped localStorage
+    useEffect(() => {
+        if (user?.id) {
+            setUserId(String(user.id));
+        } else {
+            setUserId(null);
+        }
+    }, [user?.id, setUserId]);
 
     // Fetch existing events for conflict detection
     useEffect(() => {
@@ -87,6 +101,29 @@ export default function FloatingAIChat() {
         }
     }, [isOpen, user]);
 
+    // Close menu when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                setShowMenu(false);
+            }
+        };
+
+        if (showMenu) {
+            document.addEventListener("mousedown", handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [showMenu]);
+
+    // Handle clear chat with confirmation
+    const handleClearChat = () => {
+        clearMessages();
+        setShowClearConfirm(false);
+        setShowMenu(false);
+    };
+
     // Don't render anything if user is not logged in
     if (!userLoading && !user) {
         return null;
@@ -111,9 +148,9 @@ export default function FloatingAIChat() {
         setIsTyping(true);
 
         try {
-            // Build conversation history for context (exclude welcome message and proposals)
+            // Build conversation history for context (exclude welcome message only)
             const conversationHistory: ChatMessage[] = messages
-                .filter(m => !m.scheduleProposal && m.id !== "welcome")
+                .filter(m => m.id !== "welcome")
                 .map(m => ({ role: m.role, content: m.content }));
 
             // Build request body - only include history if not empty
@@ -215,6 +252,10 @@ export default function FloatingAIChat() {
             }
 
             try {
+                // Normalize meeting_type to lowercase for backend
+                const meetingType = (item.meeting_type || 'onsite').toLowerCase();
+                console.log(`[AI Schedule] Creating event: ${item.title}, meeting_type: ${meetingType}, location: ${item.location || 'none'}`);
+
                 await axiosClient.post("/events", {
                     title: item.title,
                     start_date: item.date,
@@ -222,7 +263,9 @@ export default function FloatingAIChat() {
                     start_time: item.start_time,
                     end_time: item.end_time,
                     description: item.notes || "",
-                    all_day: false
+                    all_day: false,
+                    meeting_type: meetingType,
+                    location: item.location || null
                 });
                 results.success++;
 
@@ -235,6 +278,9 @@ export default function FloatingAIChat() {
                     endTime: item.end_time,
                     allDay: false
                 }]);
+
+                // Dispatch global event to update UI in other components
+                window.dispatchEvent(new Event('events-updated'));
             } catch (error) {
                 console.error("Failed to create event:", error);
                 results.errors.push(`${item.title}: Failed to save`);
@@ -284,15 +330,75 @@ export default function FloatingAIChat() {
                                 <p className="text-white/70 text-xs">{isTyping ? "Thinking..." : "Online"}</p>
                             </div>
                         </div>
-                        <button
-                            onClick={() => setIsOpen(false)}
-                            className="w-8 h-8 rounded-full hover:bg-white/20 flex items-center justify-center transition-colors"
-                        >
-                            <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                        </button>
+                        <div className="flex items-center gap-1">
+                            {/* Three-dot menu */}
+                            <div className="relative" ref={menuRef}>
+                                <button
+                                    onClick={() => setShowMenu(!showMenu)}
+                                    className="w-8 h-8 rounded-full hover:bg-white/20 flex items-center justify-center transition-colors"
+                                    title="Menu"
+                                >
+                                    <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                                        <circle cx="12" cy="5" r="1.5" />
+                                        <circle cx="12" cy="12" r="1.5" />
+                                        <circle cx="12" cy="19" r="1.5" />
+                                    </svg>
+                                </button>
+                                {/* Dropdown menu */}
+                                {showMenu && (
+                                    <div className="absolute right-0 top-10 w-40 bg-white rounded-lg shadow-lg py-1 z-50">
+                                        <button
+                                            onClick={() => {
+                                                setShowMenu(false);
+                                                setShowClearConfirm(true);
+                                            }}
+                                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                                        >
+                                            <svg className="w-4 h-4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                            </svg>
+                                            Clear chat
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                            {/* Close button */}
+                            <button
+                                onClick={() => setIsOpen(false)}
+                                className="w-8 h-8 rounded-full hover:bg-white/20 flex items-center justify-center transition-colors"
+                            >
+                                <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
                     </div>
+
+                    {/* Clear Chat Confirmation Modal */}
+                    {showClearConfirm && (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 rounded-2xl">
+                            <div className="bg-white rounded-xl p-5 mx-4 shadow-xl max-w-[320px]">
+                                <h4 className="text-lg font-semibold text-gray-900 mb-2">Clear chat?</h4>
+                                <p className="text-sm text-gray-600 mb-4">
+                                    Are you sure you want to clear this chat? This action cannot be undone.
+                                </p>
+                                <div className="flex gap-3 justify-end">
+                                    <button
+                                        onClick={() => setShowClearConfirm(false)}
+                                        className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleClearChat}
+                                        className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+                                    >
+                                        Clear chat
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Messages Area */}
                     <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">

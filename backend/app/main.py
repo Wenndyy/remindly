@@ -397,10 +397,14 @@ async def create_event(
 @app.get("/events")
 def get_events(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     # Gunakan joinedload untuk mengambil data user dan project sekaligus
+    # Sort by start_date and start_time (earliest first)
     events = db.query(Event).options(
         joinedload(Event.user),
         joinedload(Event.project)
-    ).filter(Event.user_id == current_user.id).all()
+    ).filter(Event.user_id == current_user.id).order_by(
+        Event.start_date.asc(),
+        Event.start_time.asc()
+    ).all()
     
     out = []
     for e in events:
@@ -604,12 +608,33 @@ def get_event_detail(
     resp["organizer_id"] = event.user.id
     resp["organizer_name"] = event.user.full_name or event.user.email
     resp["organizer_email"] = event.user.email
+    resp["organizer_profile_picture"] = event.user.profile_picture
     
-    # Parse guest list untuk detail view
+    # Parse guest list and resolve to user objects with profile pictures
     if event.guest:
         guest_raw = event.guest or ""
-        resp["guest_list"] = [g.strip() for g in guest_raw.split(",") if g.strip()]
-        resp["participants"] = len(resp["guest_list"])
+        guest_emails = [g.strip() for g in guest_raw.split(",") if g.strip()]
+        
+        # Look up users by email to get profile pictures
+        guest_list = []
+        for email in guest_emails:
+            user = db.query(User).filter(User.email == email).first()
+            if user:
+                guest_list.append({
+                    "email": user.email,
+                    "full_name": user.full_name or user.email,
+                    "profile_picture": user.profile_picture
+                })
+            else:
+                # Non-registered guest
+                guest_list.append({
+                    "email": email,
+                    "full_name": email,
+                    "profile_picture": None
+                })
+        
+        resp["guest_list"] = guest_list
+        resp["participants"] = len(guest_list)
     else:
         resp["guest_list"] = []
         resp["participants"] = 0

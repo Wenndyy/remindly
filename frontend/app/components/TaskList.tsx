@@ -6,7 +6,7 @@ import React from "react";
 export type TaskItem = {
   id?: string;
   title: string;
-  date: string; 
+  date: string;
   startHour?: number;
   startMinute?: number;
   endHour?: number;
@@ -39,7 +39,7 @@ export default function TaskList({ tasks = [], onTaskClick }: TaskListProps) {
 
   return (
     <div className="bg-white rounded-[15px] shadow pt-[34px] px-[25px] pb-[19px]">
-      <h3 className="text-xl font-semibold mb-3 text-black">Tasks</h3>
+      <h3 className="text-xl font-semibold mb-3 text-black">Schedule</h3>
       <ul className="space-y-2">
         {displayTasks.map((task) => (
           <li
@@ -51,13 +51,13 @@ export default function TaskList({ tasks = [], onTaskClick }: TaskListProps) {
               <div className="font-semibold text-black mb-[5px]">{task.title}</div>
               <div className="text-sm text-black">
                 {formatDisplayDate(task.date)}
-              
+
               </div>
-              
+
             </div>
             <div>
               {task.project && (
-                <span 
+                <span
                   className="inline-block text-xs px-3 py-1 rounded-[5px]"
                   style={{
                     backgroundColor: task.project_color ? `${task.project_color}20` : '#FEF3C7',

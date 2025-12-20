@@ -147,6 +147,15 @@ export default function DashboardContent({ initialUser = null }: { initialUser?:
     };
   }, [router]);
 
+  // Listen for global event updates (from floating chat)
+  useEffect(() => {
+    const handleEventsUpdated = () => {
+      setRefreshTrigger(prev => prev + 1);
+    };
+    window.addEventListener('events-updated', handleEventsUpdated);
+    return () => window.removeEventListener('events-updated', handleEventsUpdated);
+  }, []);
+
 
   useEffect(() => {
     if (checkedAuth) {

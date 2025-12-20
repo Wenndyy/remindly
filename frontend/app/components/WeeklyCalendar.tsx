@@ -336,8 +336,7 @@ export default function WeeklyCalendar({
         <div>
           <button
             onClick={() => openEventModal(null)}
-            className="inline-flex items-center gap-2 px-4 py-2"
-            style={{ background: "#337AF7", color: "#fff", borderRadius: 6 }}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M12 5v14M5 12h14" strokeLinecap="round" strokeLinejoin="round" />

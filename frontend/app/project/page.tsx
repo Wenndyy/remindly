@@ -47,6 +47,11 @@ export default function ProjectPage({
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Multi-select state
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedProjectIds, setSelectedProjectIds] = useState<Set<number>>(new Set());
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+
   const filteredProjects = projects.filter((p) =>
     p.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -228,6 +233,47 @@ export default function ProjectPage({
     return option ? option.label : "Select Color";
   };
 
+  // Multi-select handlers
+  const toggleSelectMode = () => {
+    setIsSelectMode(!isSelectMode);
+    setSelectedProjectIds(new Set());
+  };
+
+  const toggleProjectSelection = (projectId: number) => {
+    setSelectedProjectIds(prev => {
+      const next = new Set(prev);
+      if (next.has(projectId)) {
+        next.delete(projectId);
+      } else {
+        next.add(projectId);
+      }
+      return next;
+    });
+  };
+
+  const selectAllProjects = () => {
+    if (selectedProjectIds.size === filteredProjects.length) {
+      setSelectedProjectIds(new Set());
+    } else {
+      setSelectedProjectIds(new Set(filteredProjects.map(p => p.id)));
+    }
+  };
+
+  const confirmBulkDeleteProjects = async () => {
+    try {
+      for (const id of selectedProjectIds) {
+        await axiosClient.delete(`/projects/${id}`);
+      }
+      setProjects(prev => prev.filter(p => !selectedProjectIds.has(p.id)));
+      setSelectedProjectIds(new Set());
+      setShowBulkDeleteConfirm(false);
+      setIsSelectMode(false);
+    } catch (err: any) {
+      console.error("Failed to bulk delete projects:", err);
+      alert("Gagal menghapus beberapa project");
+    }
+  };
+
   return (
     <>
       <div className="w-full h-full p-0 m-0">
@@ -266,8 +312,7 @@ export default function ProjectPage({
                   setProjectColor("");
                   setShowModal(true);
                 }}
-                className="inline-flex items-center gap-2 px-4 py-2"
-                style={{ background: "#337AF7", color: "#fff", borderRadius: 6 }}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none"
                   stroke="currentColor" strokeWidth="2">
@@ -275,8 +320,46 @@ export default function ProjectPage({
                 </svg>
                 Add Project
               </button>
+
+              <button
+                onClick={toggleSelectMode}
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${isSelectMode
+                  ? "bg-gray-600 text-white hover:bg-gray-700"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                  }`}
+              >
+                {isSelectMode ? "Cancel" : "Select"}
+              </button>
             </div>
           </div>
+
+          {/* Multi-select controls */}
+          {isSelectMode && (
+            <div className="flex items-center justify-between mb-4 p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={selectAllProjects}
+                  className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                >
+                  {selectedProjectIds.size === filteredProjects.length ? "Deselect All" : "Select All"}
+                </button>
+                <span className="text-sm text-gray-600">
+                  {selectedProjectIds.size} selected
+                </span>
+              </div>
+              {selectedProjectIds.size > 0 && (
+                <button
+                  onClick={() => setShowBulkDeleteConfirm(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  Delete Selected ({selectedProjectIds.size})
+                </button>
+              )}
+            </div>
+          )}
 
           <hr className="h-5" />
 
@@ -287,10 +370,28 @@ export default function ProjectPage({
               {filteredProjects.map((project) => (
                 <div
                   key={project.id}
-                  onClick={() => router.push(`/project/${project.id}`)}
-                  className="flex items-center justify-between border border-gray-200 rounded-xl px-6 py-4 shadow-sm hover:shadow-md transition cursor-pointer"
+                  onClick={() => {
+                    if (isSelectMode) {
+                      toggleProjectSelection(project.id);
+                    } else {
+                      router.push(`/project/${project.id}`);
+                    }
+                  }}
+                  className={`flex items-center justify-between border rounded-xl px-6 py-4 shadow-sm hover:shadow-md transition cursor-pointer ${selectedProjectIds.has(project.id) ? "border-blue-500 bg-blue-50" : "border-gray-200"
+                    }`}
                 >
                   <div className="flex items-center gap-4">
+                    {/* Checkbox for multi-select */}
+                    {isSelectMode && (
+                      <input
+                        type="checkbox"
+                        checked={selectedProjectIds.has(project.id)}
+                        onChange={() => toggleProjectSelection(project.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                      />
+                    )}
+
                     <div
                       className="w-1 h-10 rounded-full"
                       style={{ backgroundColor: project.color || '#6B7280' }}
@@ -590,6 +691,35 @@ export default function ProjectPage({
                 style={{ background: '#B6252A' }}
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BULK DELETE CONFIRM MODAL */}
+      {showBulkDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-60">
+          <div className="bg-white rounded-lg p-6 w-[370px] shadow-lg text-center">
+            <h3 className="text-2xl font-semibold mb-2 text-black">Delete {selectedProjectIds.size} Projects?</h3>
+            <p className="text-[16px] text-[#55565B] mb-6">
+              Are you sure you want to delete {selectedProjectIds.size} selected projects? This action cannot be undone.
+            </p>
+
+            <div className="flex justify-center gap-4">
+              <button
+                onClick={() => setShowBulkDeleteConfirm(false)}
+                className="px-6 py-2 rounded-lg text-black bg-[#E9EDE9] w-[148px] items-center justify-center flex"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={confirmBulkDeleteProjects}
+                className="px-6 py-2 rounded-lg text-white w-[148px] items-center justify-center flex"
+                style={{ background: '#B6252A' }}
+              >
+                Delete All
               </button>
             </div>
           </div>

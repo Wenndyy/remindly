@@ -333,6 +333,11 @@ ATURAN RESPONS:
 2. Untuk BUAT jadwal baru: Jika detail kurang (tanggal/waktu), tanya dulu. Jika lengkap, berikan JSON proposal.
 3. Untuk sapaan: Balas ramah, tawarkan bantuan jadwal.
 
+ATURAN MEETING TYPE (WAJIB):
+- Jika user menyebut: "online", "zoom", "google meet", "meet", "gmeet", "teams", "virtual", "video call" → meeting_type = "online"
+- Jika user menyebut: "onsite", "offline", "in-person", "tatap muka", "di kantor", "di kampus", "face to face" → meeting_type = "onsite"
+- Jika tidak ada kata kunci meeting type → meeting_type = "onsite" (default)
+
 FORMAT JSON (HANYA untuk membuat jadwal baru dengan detail lengkap):
 ```json
 {{
@@ -344,6 +349,8 @@ FORMAT JSON (HANYA untuk membuat jadwal baru dengan detail lengkap):
       "date": "YYYY-MM-DD",
       "start_time": "HH:MM",
       "end_time": "HH:MM",
+      "meeting_type": "online atau onsite",
+      "location": "Lokasi pertemuan (jika disebutkan user)",
       "notes": "Catatan opsional"
     }}
   ]
@@ -351,6 +358,8 @@ FORMAT JSON (HANYA untuk membuat jadwal baru dengan detail lengkap):
 ```
 
 PENTING: 
+- SELALU sertakan meeting_type di setiap item jadwal.
+- Jika user menyebut lokasi (contoh: "di TULT", "di kantor A", "di kampus"), WAJIB sertakan dalam field location.
 - Jangan kirim JSON untuk pertanyaan tentang jadwal existing.
 - Jangan ulangi proposal sebelumnya jika user bertanya tentang jadwalnya."""
 

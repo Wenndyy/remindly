@@ -120,7 +120,7 @@ export function checkTimeConflict(
             return {
                 hasConflict: true,
                 conflictingEvent: existing,
-                message: `Time conflict with "${existing.title}" (${formatTimeRange(existing.startTime, existing.endTime)})`
+                message: `Time conflict with "${existing.title}" on ${existing.startDate} (${formatTimeRange(existing.startTime, existing.endTime)})`
             };
         }
     }

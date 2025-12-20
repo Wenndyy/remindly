@@ -162,6 +162,15 @@ export default function CalendarPage({
     };
   }, [router]);
 
+  // Listen for global event updates (from floating chat)
+  useEffect(() => {
+    const handleEventsUpdated = () => {
+      setRefreshTrigger(prev => prev + 1);
+    };
+    window.addEventListener('events-updated', handleEventsUpdated);
+    return () => window.removeEventListener('events-updated', handleEventsUpdated);
+  }, []);
+
   if (!checkedAuth) {
     return <div className="p-6">Memeriksa autentikasi...</div>;
   }

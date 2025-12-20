@@ -39,6 +39,29 @@ type EventShape = {
 
 type UserShape = { photoURL?: string | null; name?: string | null } | null;
 
+// Helper to resolve image URL
+const getImageUrl = (url?: string | null): string | null => {
+  if (!url) return null;
+  if (
+    url.startsWith("http://") ||
+    url.startsWith("https://") ||
+    url.startsWith("data:")
+  ) {
+    return url;
+  }
+  return `http://127.0.0.1:8000${url}`;
+};
+
+// Helper to get initials from name or email
+const getInitials = (name: string | null | undefined, email?: string): string => {
+  const source = name || email || "?";
+  const parts = source.trim().split(/\s+/);
+  if (parts.length >= 2 && parts[0] && parts[1]) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return parts[0] ? parts[0][0].toUpperCase() : "?";
+};
+
 export default function ProjectDetailPage({
   initialUser = null,
 }: {
@@ -823,12 +846,36 @@ export default function ProjectDetailPage({
             {/* Review title & invited by */}
             <div className="mb-4">
               <h3 className="text-2xl font-bold text-gray-900 mt-6">{eventDetails.title}</h3>
-              <p className="text-sm text-gray-500 mt-4">
-                Invited by:{" "}
-                <span className="text-gray-700 font-medium">
-                  {eventDetails.organizer_name || user?.name || "Unknown"}
-                </span>
-              </p>
+              <div className="flex items-center gap-2 mt-4">
+                <span className="text-sm text-gray-500">Invited by:</span>
+                {(() => {
+                  const organizerName = (eventDetails as any).organizer_name || user?.name || "Unknown";
+                  const organizerPhoto = (eventDetails as any).organizer_profile_picture;
+
+                  return (
+                    <div className="flex items-center gap-2">
+                      {organizerPhoto ? (
+                        <img
+                          src={getImageUrl(organizerPhoto) || ""}
+                          alt={organizerName}
+                          className="w-6 h-6 rounded-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <div
+                          className="w-6 h-6 rounded-full flex items-center justify-center text-xs text-white font-semibold"
+                          style={{ backgroundColor: '#6B7280' }}
+                        >
+                          {getInitials(organizerName, undefined)}
+                        </div>
+                      )}
+                      <span className="text-gray-700 font-medium">{organizerName}</span>
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
 
             {/* Info rows */}
@@ -881,16 +928,56 @@ export default function ProjectDetailPage({
                   <div className="flex items-center gap-3">
                     <div className="flex -space-x-3">
                       {(() => {
-                        const totalParticipants = eventDetails.participants || 0;
+                        const guestsArray = eventDetails.guest_list && Array.isArray(eventDetails.guest_list) ? eventDetails.guest_list : [];
+                        const totalParticipants = eventDetails.participants || guestsArray.length || 0;
+                        const displayGuests = guestsArray.slice(0, 3);
 
-                        if (totalParticipants > 0) {
+                        if (displayGuests.length > 0) {
+                          return (
+                            <>
+                              {displayGuests.map((guest: any, index: number) => {
+                                const guestName = typeof guest === 'string' ? guest :
+                                  guest?.full_name ?? guest?.name ?? guest?.email ?? 'Guest';
+                                const guestEmail = typeof guest === 'object' ? guest.email : null;
+                                const guestPhoto = typeof guest === 'object' ? (guest.profile_picture ?? guest.photo) : null;
+
+                                return (
+                                  <div
+                                    key={index}
+                                    className="w-[50px] h-[50px] rounded-full border-2 border-white bg-gray-100 flex items-center justify-center text-sm font-medium text-gray-800 overflow-hidden"
+                                    style={{ boxShadow: "0 1px 0 rgba(0,0,0,0.04)" }}
+                                    title={guestName}
+                                  >
+                                    {guestPhoto ? (
+                                      <img src={getImageUrl(guestPhoto) || ""} className="w-full h-full rounded-full object-cover" alt={guestName} />
+                                    ) : (
+                                      <div
+                                        className="w-full h-full rounded-full flex items-center justify-center text-white font-semibold"
+                                        style={{ backgroundColor: '#6B7280' }}
+                                      >
+                                        {getInitials(guestName, guestEmail)}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+
+                              {totalParticipants > 3 && (
+                                <div className="ml-4 text-gray-700 font-medium items-center justify-center flex">
+                                  +{totalParticipants - 3}
+                                </div>
+                              )}
+                            </>
+                          );
+                        } else if (totalParticipants > 0) {
+                          // Fallback if no guest_list but participants count exists
                           return (
                             <>
                               {Array.from({ length: Math.min(3, totalParticipants) }).map((_, index) => (
                                 <div
                                   key={index}
-                                  className="w-[50px] h-[50px] rounded-full border-2 border-white bg-gray-100 flex items-center justify-center text-sm font-medium text-gray-800"
-                                  style={{ boxShadow: "0 1px 0 rgba(0,0,0,0.04)" }}
+                                  className="w-[50px] h-[50px] rounded-full border-2 border-white flex items-center justify-center text-sm font-semibold text-white overflow-hidden"
+                                  style={{ boxShadow: "0 1px 0 rgba(0,0,0,0.04)", backgroundColor: '#6B7280' }}
                                 >
                                   {String.fromCharCode(65 + index)}
                                 </div>

@@ -88,13 +88,14 @@ class EventResponse(BaseModel):
     participants: Optional[int] = 0
     project_name: Optional[str] = None
     project_color: Optional[str] = None
-    guest_list: Optional[List[str]] = None
+    guest_list: Optional[List[dict]] = None  # Changed from List[str] to List[dict] for profile photos
     time_display: Optional[str] = None
     
     # Tambahkan field organizer
     organizer_id: Optional[int] = None
     organizer_name: Optional[str] = None
     organizer_email: Optional[str] = None
+    organizer_profile_picture: Optional[str] = None  # Added for profile photo
     
     class Config:
         from_attributes = True
@@ -206,6 +207,7 @@ class ScheduleItem(BaseModel):
     end_time: str
     notes: Optional[str] = None
     category: Optional[str] = None
+    meeting_type: Optional[str] = "onsite"  # 'online' or 'onsite'
 
 
 class ScheduleProposal(BaseModel):

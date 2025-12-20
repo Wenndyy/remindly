@@ -13,7 +13,7 @@ def send_email(to: str, subject: str, body: str):
     try:
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
             server.starttls()
-            server.login(settings.smtp_user, settings.smtp_password)
+            server.login(settings.smtp_username, settings.smtp_password)
             server.send_message(msg)
     except Exception as e:
         raise RuntimeError(f"Email sending failed: {str(e)}")

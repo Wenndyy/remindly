@@ -394,7 +394,7 @@ export default function ProfilePage() {
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm text-[#55565B] mb-1">First Name</label>
+                                        <label className="block text-sm text-[#55565B] mb-1">Last Name</label>
                                         <input
                                             type="text"
                                             value={editForm.last_name}

@@ -790,7 +790,12 @@ def get_project(project_id: int, include_events: Optional[bool] = False, db: Ses
             
             # Guest list
             if event.guest:
-                event_data["guest_list"] = [g.strip() for g in (event.guest or "").split(",") if g.strip()]
+                event_data["guest_list"] = [
+                    {"email": g.strip(), "profile_picture": None}
+                    for g in (event.guest or "").split(",")
+                    if g.strip()
+                ]
+
             else:
                 event_data["guest_list"] = []
             
